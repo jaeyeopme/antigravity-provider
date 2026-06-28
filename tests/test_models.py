@@ -1,6 +1,6 @@
 import unittest
 
-from ag_proxy.models import KNOWN_MODELS, clamp_reasoning_effort, normalize_model_id, resolve_wire_model_id
+from antigravity_provider.models import KNOWN_MODELS, clamp_reasoning_effort, normalize_model_id, resolve_wire_model_id
 
 
 class ModelCatalogTests(unittest.TestCase):

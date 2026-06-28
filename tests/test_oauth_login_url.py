@@ -1,7 +1,7 @@
 import os
 import unittest
 
-from ag_proxy.oauth import build_auth_url
+from antigravity_provider.oauth import build_auth_url
 
 
 class OAuthLoginUrlTests(unittest.TestCase):

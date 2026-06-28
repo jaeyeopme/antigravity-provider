@@ -1,6 +1,6 @@
 import unittest
 
-from ag_proxy.openai_compat import to_openai_completion
+from antigravity_provider.openai_compat import to_openai_completion
 
 
 class OpenAIResponseTests(unittest.TestCase):

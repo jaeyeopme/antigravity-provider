@@ -1,6 +1,6 @@
 import unittest
 
-from ag_proxy.openai_compat import parse_chat_request
+from antigravity_provider.openai_compat import parse_chat_request
 
 
 class OpenAICompatTests(unittest.TestCase):

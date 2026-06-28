@@ -1,6 +1,6 @@
 import unittest
 
-from ag_proxy.cloudcode import load_or_onboard_project, read_default_tier, read_project_id
+from antigravity_provider.cloudcode import load_or_onboard_project, read_default_tier, read_project_id
 
 
 class CloudCodeTests(unittest.TestCase):

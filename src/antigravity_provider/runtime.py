@@ -139,7 +139,7 @@ def ensure_provider_profile_files(root: Path | None = None) -> Path:
     plugin_dir = Path(root).expanduser() / "plugins" / "model-providers" / "antigravity"
     plugin_dir.mkdir(parents=True, exist_ok=True)
     (plugin_dir / "__init__.py").write_text(
-        "from ag_proxy.hermes_provider import register_provider_profile\n"
+        "from antigravity_provider.hermes_provider import register_provider_profile\n"
         "register_provider_profile()\n",
         encoding="utf-8",
     )

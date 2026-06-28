@@ -1,5 +1,7 @@
 # Antigravity Provider
 
+[![tests](https://github.com/jaeyeopme/antigravity-provider/actions/workflows/test.yml/badge.svg)](https://github.com/jaeyeopme/antigravity-provider/actions/workflows/test.yml)
+
 Google Antigravity provider for Hermes Agent. The plugin registers the
 `antigravity` provider, adds the `hermes agy` command group, and translates
 Hermes chat requests to Antigravity Cloud Code Assist in-process.

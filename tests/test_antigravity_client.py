@@ -1,6 +1,6 @@
 import unittest
 
-from ag_proxy.antigravity_client import AntigravityClient
+from antigravity_provider.antigravity_client import AntigravityClient
 
 
 class AntigravityClientTests(unittest.TestCase):

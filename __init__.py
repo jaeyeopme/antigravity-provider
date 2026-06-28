@@ -7,4 +7,4 @@ _SRC = Path(__file__).resolve().parent / "src"
 if str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
-from ag_proxy.hermes_plugin import register
+from antigravity_provider.hermes_plugin import register

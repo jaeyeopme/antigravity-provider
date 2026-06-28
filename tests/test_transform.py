@@ -1,6 +1,6 @@
 import unittest
 
-from ag_proxy.transform import build_generate_content_request
+from antigravity_provider.transform import build_generate_content_request
 
 
 class TransformTests(unittest.TestCase):

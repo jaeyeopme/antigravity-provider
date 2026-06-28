@@ -2,8 +2,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-import ag_proxy.hermes_plugin as plugin
-from ag_proxy.runtime import ensure_provider_profile_files, openai_completion_object
+import antigravity_provider.hermes_plugin as plugin
+from antigravity_provider.runtime import ensure_provider_profile_files, openai_completion_object
 
 
 class FakeCtx:

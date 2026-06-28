@@ -1,8 +1,8 @@
 import time
 import unittest
 
-import ag_proxy.runtime as runtime
-from ag_proxy.errors import TokenExpired
+import antigravity_provider.runtime as runtime
+from antigravity_provider.errors import TokenExpired
 
 
 class FakeStore:

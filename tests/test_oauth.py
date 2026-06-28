@@ -2,9 +2,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
-import ag_proxy.oauth as oauth_module
-from ag_proxy.credentials import CredentialStore
-from ag_proxy.oauth import oauth_client, refresh_access_token, refresh_if_needed
+import antigravity_provider.oauth as oauth_module
+from antigravity_provider.credentials import CredentialStore
+from antigravity_provider.oauth import oauth_client, refresh_access_token, refresh_if_needed
 
 
 class OAuthTests(unittest.TestCase):

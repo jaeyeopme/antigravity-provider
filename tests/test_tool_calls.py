@@ -1,7 +1,7 @@
 import unittest
 
-from ag_proxy.openai_compat import to_openai_completion
-from ag_proxy.transform import build_generate_content_request
+from antigravity_provider.openai_compat import to_openai_completion
+from antigravity_provider.transform import build_generate_content_request
 
 
 class ToolCallTests(unittest.TestCase):

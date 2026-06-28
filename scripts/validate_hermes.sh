@@ -5,7 +5,7 @@ python -m unittest discover -v
 
 # Direct import check for the pip/editable path.
 HERMES_HOME="${HERMES_HOME:-$(mktemp -d)}" python - <<'PY'
-from ag_proxy.hermes_plugin import register
+from antigravity_provider.hermes_plugin import register
 
 class Ctx:
     def __init__(self):

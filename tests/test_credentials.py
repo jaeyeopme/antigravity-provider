@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from ag_proxy.credentials import CredentialStore, load_agy_keychain_credentials, parse_agy_keychain_secret
+from antigravity_provider.credentials import CredentialStore, load_agy_keychain_credentials, parse_agy_keychain_secret
 
 
 class CredentialStoreTests(unittest.TestCase):
