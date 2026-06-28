@@ -1,0 +1,5 @@
+manifest_version: 1
+name: antigravity-provider
+version: 0.1.0
+kind: standalone
+description: Hermes in-process provider plugin for Google Antigravity.
