@@ -139,6 +139,11 @@ def ensure_provider_profile_files(root: Path | None = None) -> Path:
     plugin_dir = Path(root).expanduser() / "plugins" / "model-providers" / "antigravity"
     plugin_dir.mkdir(parents=True, exist_ok=True)
     (plugin_dir / "__init__.py").write_text(
+        "import sys\n"
+        "from pathlib import Path\n\n"
+        "_src = Path(__file__).resolve().parents[2] / 'antigravity-provider' / 'src'\n"
+        "if _src.is_dir() and str(_src) not in sys.path:\n"
+        "    sys.path.insert(0, str(_src))\n\n"
         "from antigravity_provider.hermes_provider import register_provider_profile\n"
         "register_provider_profile()\n",
         encoding="utf-8",

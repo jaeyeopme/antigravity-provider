@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from .models import DEFAULT_MODEL, KNOWN_MODELS, clamp_reasoning_effort
+from .models import DEFAULT_MODEL, KNOWN_MODELS, MODEL_DISPLAY_NAMES, clamp_reasoning_effort, normalize_model_id
 
 PROVIDER_NAME = "antigravity"
 PLACEHOLDER_API_KEY_ENV = "ANTIGRAVITY_HERMES_API_KEY"
@@ -45,10 +45,18 @@ def register_provider_profile() -> bool:
             return {}, top_level
 
         def get_max_tokens(self, model: str | None) -> int | None:
-            return KNOWN_MODELS.get(model or "") or KNOWN_MODELS.get(DEFAULT_MODEL)
+            norm = normalize_model_id(model or "")
+            return KNOWN_MODELS.get(norm) or KNOWN_MODELS.get(model or "") or KNOWN_MODELS.get(DEFAULT_MODEL)
 
         def fetch_models(self, **kwargs: Any) -> list[str] | None:
             return list(KNOWN_MODELS)
+
+        def discover_models(self, **kwargs: Any) -> list[dict[str, Any]] | None:
+            return [
+                {"id": mid, "note": MODEL_DISPLAY_NAMES.get(mid, "")}
+                for mid in KNOWN_MODELS
+                if mid in MODEL_DISPLAY_NAMES
+            ]
 
     register_provider(
         AntigravityProfile(

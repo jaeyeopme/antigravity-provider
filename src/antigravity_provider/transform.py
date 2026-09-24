@@ -19,9 +19,9 @@ def _thinking_budget(logical: str, effort: str) -> int:
         return 0
     if logical == "gemini-3.1-pro":
         return 10001 if effort == "high" else 1001
-    if logical == "gemini-3.5-flash":
+    if logical in {"gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.5-flash"}:
         return {"low": 1000, "medium": 4000, "high": 10000}.get(effort, 1000)
-    if logical in {"gpt-oss-120b", "openai/gpt-oss-120b-maas"}:
+    if logical in {"gpt-oss-120b", "gpt-oss-120b-medium", "openai/gpt-oss-120b-maas"}:
         return 8192
     return {"minimal": 1024, "low": 4096, "medium": 8192, "high": 16384}.get(effort, 4096)
 
@@ -81,12 +81,26 @@ def _schema(schema: Any) -> dict[str, Any]:
     if not isinstance(schema, dict):
         return {"type": "object", "properties": {}}
     banned = {"$schema", "$defs", "definitions", "additionalProperties", "patternProperties", "unevaluatedProperties"}
+
     def clean(value: Any) -> Any:
         if isinstance(value, dict):
+            if "anyOf" in value and isinstance(value["anyOf"], list) and value["anyOf"]:
+                branches = [b for b in value["anyOf"] if isinstance(b, dict)]
+                if branches:
+                    chosen = dict(branches[0])
+                    for b in branches[1:]:
+                        if "properties" in b and isinstance(b["properties"], dict):
+                            chosen.setdefault("properties", {}).update(b["properties"])
+                    merged = {k: v for k, v in value.items() if k != "anyOf" and k not in banned}
+                    for k, v in chosen.items():
+                        if k not in banned:
+                            merged.setdefault(k, v)
+                    return clean(merged)
             return {k: clean(v) for k, v in value.items() if k not in banned}
         if isinstance(value, list):
             return [clean(v) for v in value]
         return value
+
     out = clean(deepcopy(schema))
     if "type" not in out:
         out["type"] = "object"
@@ -140,13 +154,14 @@ def _session_id(messages: list[dict[str, Any]]) -> str:
 
 
 def _envelope_labels(wire_model: str, step: int = 2) -> dict[str, str]:
+    profile = WIRE_PROFILES.get(wire_model) or {}
     labels = {
         "last_step_index": str(step - 1),
         "trajectory_id": str(uuid.uuid4()),
         "used_claude": str(wire_model.startswith("claude-")).lower(),
         "used_claude_conservative": str(wire_model.startswith("claude-")).lower(),
+        "used_non_gemini_model": str(bool(profile.get("usedNonGeminiModel"))).lower(),
     }
-    profile = WIRE_PROFILES.get(wire_model) or {}
     if profile.get("modelEnum"):
         labels["model_enum"] = str(profile["modelEnum"])
     return labels
@@ -167,6 +182,9 @@ def build_generate_content_request(
     logical = strip_provider_prefix(normalize_model_id(model))
     effort = clamp_reasoning_effort(model, reasoning_effort)
     wire_model = resolve_wire_model_id(model, effort)
+    profile = WIRE_PROFILES.get(wire_model, {})
+    actual_wire_model = str(profile.get("wireModel") or wire_model)
+
     system_parts: list[dict[str, str]] = []
     contents: list[dict[str, Any]] = []
     call_names: dict[str, str] = {}
@@ -193,7 +211,11 @@ def build_generate_content_request(
                 if tool_call.get("id"):
                     call_names[str(tool_call["id"])] = name
                 part = {"functionCall": {"name": name, "args": _parse_args(fn.get("arguments") if isinstance(fn, dict) else None)}}
-                if wire_model.startswith("gemini-3") or wire_model.startswith("gemini-pro"):
+                if (
+                    wire_model.startswith("gemini-3")
+                    or wire_model.startswith("gemini-pro")
+                    or actual_wire_model.startswith("gemini-3")
+                ):
                     part["thoughtSignature"] = SKIP_THOUGHT_SIGNATURE
                 parts.append(part)
             if parts:
@@ -209,7 +231,6 @@ def build_generate_content_request(
     if not contents:
         contents.append({"role": "user", "parts": [{"text": "Continue."}]})
 
-    profile = WIRE_PROFILES.get(wire_model, {})
     cap = int(profile.get("maxOutputTokens") or 65535)
     generation_config: dict[str, Any] = {
         "maxOutputTokens": min(max_tokens, cap) if isinstance(max_tokens, int) and max_tokens > 0 else cap,
@@ -237,7 +258,7 @@ def build_generate_content_request(
 
     return {
         "project": project_id,
-        "model": wire_model,
+        "model": actual_wire_model,
         "request": request,
         "requestType": "agent",
         "userAgent": "antigravity",

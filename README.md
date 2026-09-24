@@ -35,7 +35,7 @@ hermes agy login --no-keychain
 ```
 
 Use `--no-keychain` to force browser login. No manual token setup is required.
-`hermes agy select` defaults to `google-antigravity/gemini-3.1-pro`.
+`hermes agy select` defaults to `google-antigravity/gemini-3.8-flash`.
 
 ## Logout and uninstall
 
@@ -68,19 +68,28 @@ this unless you tune `/reasoning`.
 
 | Model id | Hermes input | Sent to Antigravity |
 | --- | --- | --- |
+| `google-antigravity/gemini-3.8-flash` (default) | `minimal`, `low` | tiered route, 1k thinking budget |
+| `google-antigravity/gemini-3.8-flash` | `medium` | tiered route, 4k thinking budget |
+| `google-antigravity/gemini-3.8-flash` | `high`, `xhigh` | tiered route, 10k thinking budget |
+| `google-antigravity/gemini-3.7-flash` | `minimal`, `low` | tiered route, 1k thinking budget |
+| `google-antigravity/gemini-3.7-flash` | `medium` | tiered route, 4k thinking budget |
+| `google-antigravity/gemini-3.7-flash` | `high`, `xhigh` | tiered route, 10k thinking budget |
+| `google-antigravity/gemini-3.6-flash` | `minimal`, `low` | low route, 1k thinking budget |
+| `google-antigravity/gemini-3.6-flash` | `medium` | medium route, 4k thinking budget |
+| `google-antigravity/gemini-3.6-flash` | `high`, `xhigh` | high route, 10k thinking budget |
 | `google-antigravity/gemini-3.1-pro` | `minimal`, `low`, `medium` | low route, ~1k thinking budget |
 | `google-antigravity/gemini-3.1-pro` | `high`, `xhigh` | agent route, ~10k thinking budget |
+| `google-antigravity/claude-sonnet-4-6` | `minimal`, `low`, `medium`, `high` | thinking route, 1k/4k/8k/16k budget |
+| `google-antigravity/claude-opus-4-6` | `minimal`, `low`, `medium`, `high` | thinking route, 1k/4k/8k/16k budget |
+| `google-antigravity/gpt-oss-120b` | any enabled level | medium route, 8k thinking budget |
 | `google-antigravity/gemini-3.5-flash` | `minimal`, `low` | extra-low route, 1k thinking budget |
 | `google-antigravity/gemini-3.5-flash` | `medium` | low route, 4k thinking budget |
 | `google-antigravity/gemini-3.5-flash` | `high`, `xhigh` | agent route, 10k thinking budget |
-| `google-antigravity/claude-sonnet-4-6` | `minimal`, `low`, `medium`, `high` | same route, 1k/4k/8k/16k budget |
-| `google-antigravity/claude-opus-4-6` | `minimal`, `low`, `medium`, `high` | thinking route, 1k/4k/8k/16k budget |
-| `google-antigravity/gpt-oss-120b` | any enabled level | MaaS route, 8k thinking budget |
 
 `off`, `none`, or disabled reasoning sends `includeThoughts=false` and budget
 `0`.
 
-Bare names such as `gemini-3.1-pro` are normalized to the
+Bare names such as `gemini-3.8-flash` or `gemini-3.1-pro` are normalized to the
 `google-antigravity/` prefix.
 
 ## Request support
