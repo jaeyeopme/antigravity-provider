@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.1
+
+- Preserve Hermes tool-schema unions as backend-compatible supersets instead of rejecting or selecting one branch.
+
 ## 0.2.0
 
 - Discover and route account models from `fetchAvailableModels`, with a project-scoped last-known-good cache.

@@ -101,6 +101,7 @@ class TransformTests(unittest.TestCase):
         self.assertEqual(body["request"]["labels"]["used_claude"], "true")
         self.assertEqual(body["request"]["labels"]["used_claude_conservative"], "true")
 
+
     def test_uses_real_hermes_session_identity(self):
         first = build_generate_content_request(
             model="gemini-3.1-pro",
@@ -126,10 +127,65 @@ class TransformTests(unittest.TestCase):
         self.assertNotIn("$ref", out["properties"]["item"])
         self.assertNotIn("$defs", out)
 
-    def test_collapses_nullable_union_only(self):
+    def test_collapses_nullable_union(self):
         self.assertEqual(_schema({"anyOf": [{"type": "string"}, {"type": "null"}]}), {"type": "string"})
-        with self.assertRaisesRegex(ValueError, "unsupported schema union"):
-            _schema({"anyOf": [{"type": "string"}, {"type": "integer"}]})
+
+    def test_widens_discriminated_object_union_without_dropping_branches(self):
+        out = _schema({
+            "type": "object",
+            "properties": {
+                "operations": {
+                    "type": "array",
+                    "items": {
+                        "anyOf": [
+                            {
+                                "type": "object",
+                                "properties": {
+                                    "name": {"type": "string"},
+                                    "action": {"type": "string", "enum": ["create"]},
+                                    "content": {"type": "string"},
+                                },
+                                "required": ["name", "action", "content"],
+                            },
+                            {
+                                "type": "object",
+                                "properties": {
+                                    "name": {"type": "string"},
+                                    "action": {"type": "string", "enum": ["delete"]},
+                                    "absorbed_into": {"type": "string"},
+                                },
+                                "required": ["name", "action"],
+                            },
+                        ],
+                    },
+                },
+            },
+        })
+        item = out["properties"]["operations"]["items"]
+        self.assertNotIn("anyOf", item)
+        self.assertEqual(item["properties"]["action"]["enum"], ["create", "delete"])
+        self.assertEqual(
+            set(item["properties"]),
+            {"name", "action", "content", "absorbed_into"},
+        )
+        self.assertEqual(item["required"], ["action", "name"])
+
+    def test_widens_mixed_type_union_without_choosing_one_branch(self):
+        out = _schema({
+            "type": "object",
+            "properties": {
+                "notify": {
+                    "description": "Boolean or channel list.",
+                    "anyOf": [
+                        {"type": "boolean"},
+                        {"type": "array", "items": {"type": "string"}},
+                    ],
+                },
+            },
+        })
+        notify = out["properties"]["notify"]
+        self.assertEqual(notify, {"description": "Boolean or channel list."})
+        self.assertNotIn("anyOf", notify)
 
 
 if __name__ == "__main__":
