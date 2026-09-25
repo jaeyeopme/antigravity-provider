@@ -25,17 +25,19 @@ hermes agy login
 hermes agy select
 ```
 
-The plugin reads an existing macOS `agy` Keychain credential when present.
-Otherwise it runs browser OAuth and saves the login in the active Hermes profile
-at `$HERMES_HOME/.antigravity_oauth.json`. Each Hermes profile has its own
-`$HERMES_HOME`, so browser OAuth logins are profile-scoped.
+The plugin first uses a browser OAuth login saved in the active Hermes profile
+at `$HERMES_HOME/.antigravity_oauth.json`. Without that profile override it
+imports the existing macOS `agy` Keychain credential. Keychain tokens and the
+resolved Cloud Code project are cached for the current process.
 
 ```bash
 hermes agy login --no-keychain
 ```
 
-Use `--no-keychain` to force browser login. No manual token setup is required.
-`hermes agy select` defaults to `google-antigravity/gemini-3.8-flash`.
+Use `--no-keychain` to create or replace the browser OAuth override. A later
+plain `hermes agy login` selects Keychain again and removes that override.
+`hermes agy select` uses the account catalog's `defaultAgentModelId`; passing a
+model ID always wins.
 
 ## Logout and uninstall
 
@@ -53,7 +55,7 @@ Removing the plugin alone does not remove profile auth state.
 
 ## Requirements
 
-- Hermes Agent with plugin support.
+- Hermes Agent with `ProviderProfile.create_client` support; verified on 0.21.5.
 - Python 3.11+.
 - Google account with Antigravity access.
 
@@ -61,56 +63,53 @@ The package uses only the Python standard library.
 
 ## Models and reasoning
 
-Hermes has generic `/reasoning` levels. Antigravity does not expose that same
-interface. The plugin treats Hermes reasoning as an input hint and translates it
-into the Antigravity model route plus `thinkingConfig` budget. You can ignore
-this unless you tune `/reasoning`.
+The plugin fetches the account-scoped catalog from both
+`v1internal:fetchAvailableModels` endpoints. Results are normalized into Hermes
+model IDs and cached for four hours at
+`$HERMES_HOME/.antigravity_models.json`. Failed or empty refreshes retain the
+last-known-good catalog; a small static catalog is used only before the first
+successful refresh.
 
-| Model id | Hermes input | Sent to Antigravity |
-| --- | --- | --- |
-| `google-antigravity/gemini-3.8-flash` (default) | `minimal`, `low` | tiered route, 1k thinking budget |
-| `google-antigravity/gemini-3.8-flash` | `medium` | tiered route, 4k thinking budget |
-| `google-antigravity/gemini-3.8-flash` | `high`, `xhigh` | tiered route, 10k thinking budget |
-| `google-antigravity/gemini-3.7-flash` | `minimal`, `low` | tiered route, 1k thinking budget |
-| `google-antigravity/gemini-3.7-flash` | `medium` | tiered route, 4k thinking budget |
-| `google-antigravity/gemini-3.7-flash` | `high`, `xhigh` | tiered route, 10k thinking budget |
-| `google-antigravity/gemini-3.6-flash` | `minimal`, `low` | low route, 1k thinking budget |
-| `google-antigravity/gemini-3.6-flash` | `medium` | medium route, 4k thinking budget |
-| `google-antigravity/gemini-3.6-flash` | `high`, `xhigh` | high route, 10k thinking budget |
-| `google-antigravity/gemini-3.1-pro` | `minimal`, `low`, `medium` | low route, ~1k thinking budget |
-| `google-antigravity/gemini-3.1-pro` | `high`, `xhigh` | agent route, ~10k thinking budget |
-| `google-antigravity/claude-sonnet-4-6` | `minimal`, `low`, `medium`, `high` | thinking route, 1k/4k/8k/16k budget |
-| `google-antigravity/claude-opus-4-6` | `minimal`, `low`, `medium`, `high` | thinking route, 1k/4k/8k/16k budget |
-| `google-antigravity/gpt-oss-120b` | any enabled level | medium route, 8k thinking budget |
-| `google-antigravity/gemini-3.5-flash` | `minimal`, `low` | extra-low route, 1k thinking budget |
-| `google-antigravity/gemini-3.5-flash` | `medium` | low route, 4k thinking budget |
-| `google-antigravity/gemini-3.5-flash` | `high`, `xhigh` | agent route, 10k thinking budget |
+Catalog normalization is generic:
 
-`off`, `none`, or disabled reasoning sends `includeThoughts=false` and budget
-`0`.
+- `*-tiered` becomes one public model and keeps the live wire ID and model enum.
+- `*-low`, `*-medium`, `*-high`, `*-thinking`, and `*-extra-low` variants become
+  one public model with reasoning levels.
+- Backend-selected unsuffixed models remain selectable.
+- A few legacy agent IDs remain explicit aliases.
+
+This lets catalog-only model launches appear without a plugin release. A new
+wire protocol or irregular backend naming still requires code.
+
+Hermes `/reasoning` levels select a discovered route and `thinkingConfig`.
+Live per-route budgets win. Tiered Gemini fallback policy is 1k for low, 4k for
+medium, and dynamic (`-1`) for high. `off`, `none`, or disabled reasoning sends
+`includeThoughts=false` with budget `0` when the model supports thinking.
 
 Bare names such as `gemini-3.8-flash` or `gemini-3.1-pro` are normalized to the
 `google-antigravity/` prefix.
 
 ## Request support
 
-The middleware handles:
+The native provider client handles:
 
-- `messages`, including system/developer/user/assistant/tool roles.
+- Streaming `messages`, including system/developer/user/assistant/tool roles.
 - `tools` and `tool_choice`.
 - Hermes-style `reasoning_effort`, `reasoning.effort`, and
   `extra_body.reasoning.effort` input hints.
 - `max_tokens`, `max_completion_tokens`, `temperature`, and `top_p`.
 - Data-URL images as inline data. Remote image URLs become text placeholders.
+- Local JSON Schema `$ref` resolution and nullable unions. Other `anyOf`/`oneOf`
+  unions fail explicitly instead of being flattened incorrectly.
 
-For non-Antigravity providers the middleware passes the request through.
+Provider failures propagate through Hermes retry, fallback, and error telemetry.
 
 ## Troubleshooting
 
 | Symptom | Fix |
 | --- | --- |
-| `Missing Antigravity credentials`. | Run `hermes agy login`; use `--no-keychain` if the `agy` Keychain credential is stale. |
-| `API call failed after 3 retries: Connection error` with endpoint `127.0.0.1:8765`. | Restart Hermes/Desktop so the plugin reloads, then verify `antigravity-provider` is enabled. |
+| `Missing Antigravity credentials`. | Run `hermes agy login`; use `--no-keychain` to create a browser OAuth override when the `agy` Keychain credential is stale. |
+| A newly launched model is missing. | Re-run the model picker after the four-hour catalog TTL, or run `hermes agy select <model-id>` when the backend already advertises it. |
 | OAuth callback port is busy. | Run `ANTIGRAVITY_OAUTH_PORT=51122 hermes agy login --no-keychain`. |
 
 ## Development

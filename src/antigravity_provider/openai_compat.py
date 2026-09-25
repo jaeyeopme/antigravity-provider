@@ -5,7 +5,7 @@ import json
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Iterable, Iterator
 
 from .models import normalize_model_id
 
@@ -28,6 +28,8 @@ def parse_chat_request(payload: dict[str, Any]) -> ChatRequest:
     messages = payload.get("messages")
     if not isinstance(messages, list):
         raise ValueError("messages must be a list")
+    if any(not isinstance(message, dict) for message in messages):
+        raise ValueError("messages entries must be JSON objects")
     reasoning = payload.get("reasoning_effort")
     if reasoning is None and isinstance(payload.get("reasoning"), dict):
         reasoning = payload["reasoning"].get("effort")
@@ -62,8 +64,8 @@ def _finish(reason: str | None) -> str:
     return "content_filter" if reason in {"SAFETY", "PROHIBITED_CONTENT", "BLOCKLIST"} else "stop"
 
 
-def _tool_call_id(call: dict[str, Any]) -> str:
-    raw = json.dumps(call, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+def _tool_call_id(call: dict[str, Any], index: int) -> str:
+    raw = json.dumps([index, call], sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     return "call_" + hashlib.sha1(raw.encode("utf-8")).hexdigest()[:12]
 
 
@@ -87,7 +89,7 @@ def to_openai_completion(model: str, upstream: dict[str, Any]) -> dict[str, Any]
     text: list[str] = []
     reasoning: list[str] = []
     tool_calls: list[dict[str, Any]] = []
-    for part in parts:
+    for part_index, part in enumerate(parts):
         if not isinstance(part, dict):
             continue
         if "functionCall" in part:
@@ -96,7 +98,7 @@ def to_openai_completion(model: str, upstream: dict[str, Any]) -> dict[str, Any]
             args = call.get("args") if isinstance(call.get("args"), dict) else {}
             tool_calls.append(
                 {
-                    "id": call.get("id") or _tool_call_id(call),
+                    "id": call.get("id") or _tool_call_id(call, part_index),
                     "type": "function",
                     "function": {"name": name, "arguments": json.dumps(args, separators=(",", ":"), ensure_ascii=False)},
                 }
@@ -124,3 +126,60 @@ def to_openai_completion(model: str, upstream: dict[str, Any]) -> dict[str, Any]
         ],
         "usage": _usage(resp),
     }
+
+
+def to_openai_stream_chunks(
+    model: str,
+    events: Iterable[dict[str, Any]],
+) -> Iterator[dict[str, Any]]:
+    completion_id = "chatcmpl-" + uuid.uuid4().hex
+    created = int(time.time())
+    tool_index = 0
+    saw_tool_call = False
+
+    def chunk(delta: dict[str, Any], finish_reason: str | None = None, usage: dict[str, int] | None = None) -> dict[str, Any]:
+        value: dict[str, Any] = {
+            "id": completion_id,
+            "object": "chat.completion.chunk",
+            "created": created,
+            "model": normalize_model_id(model),
+            "choices": [{"index": 0, "delta": delta, "finish_reason": finish_reason}],
+        }
+        if usage is not None:
+            value["usage"] = usage
+        return value
+
+    for event in events:
+        response = _response(event)
+        candidate = _candidate(response)
+        parts = ((candidate.get("content") or {}).get("parts") or []) if isinstance(candidate, dict) else []
+        for part in parts:
+            if not isinstance(part, dict):
+                continue
+            if "functionCall" in part:
+                call = part.get("functionCall") or {}
+                name = call.get("name") or "tool"
+                args = call.get("args") if isinstance(call.get("args"), dict) else {}
+                call_id = call.get("id") or _tool_call_id(call, tool_index)
+                yield chunk({
+                    "tool_calls": [{
+                        "index": tool_index,
+                        "id": call_id,
+                        "type": "function",
+                        "function": {
+                            "name": name,
+                            "arguments": json.dumps(args, separators=(",", ":"), ensure_ascii=False),
+                        },
+                    }]
+                })
+                tool_index += 1
+                saw_tool_call = True
+            elif isinstance(part.get("text"), str):
+                key = "reasoning_content" if part.get("thought") else "content"
+                yield chunk({key: part["text"]})
+
+        finish = candidate.get("finishReason") if isinstance(candidate, dict) else None
+        if finish:
+            reason = "tool_calls" if saw_tool_call else _finish(finish)
+            usage = _usage(response) if response.get("usageMetadata") else None
+            yield chunk({}, reason, usage)

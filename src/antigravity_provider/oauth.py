@@ -228,6 +228,7 @@ def run_login(
     if prefer_keychain:
         credentials = import_agy_keychain_credentials()
         if credentials:
+            store.delete()
             return credentials
 
     state = secrets.token_urlsafe(24)

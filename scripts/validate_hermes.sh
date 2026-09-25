@@ -19,7 +19,7 @@ class Ctx:
 ctx = Ctx()
 register(ctx)
 assert 'agy' in ctx.cli
-assert any(kind == 'llm_execution' for kind, _ in ctx.middleware)
+assert any(kind == 'llm_request' for kind, _ in ctx.middleware)
 print('plugin registration ok')
 PY
 
@@ -44,7 +44,8 @@ PY
   git -C "$repo" init -q
   git -C "$repo" add .
   git -C "$repo" -c user.name=Hermes -c user.email=hermes@example.invalid commit -q -m init
-  HERMES_HOME="$home" hermes plugins install "file://$repo" --force --enable >/dev/null
+  HERMES_HOME="$home" hermes plugins install "file://$repo" --force >/dev/null
+  HERMES_HOME="$home" hermes plugins enable antigravity-provider >/dev/null
   HERMES_HOME="$home" hermes agy status >/dev/null
-  echo 'directory plugin install ok'
+  echo 'directory plugin install and CLI registration ok'
 fi

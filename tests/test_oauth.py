@@ -52,6 +52,7 @@ class OAuthTests(unittest.TestCase):
             oauth_module.fetch_user_email = lambda access: "user@example.com"
             with tempfile.TemporaryDirectory() as d:
                 store = CredentialStore(Path(d) / "credentials.json")
+                store.save({"access_token": "browser", "refresh_token": "browser-ref"})
                 credentials = oauth_module.run_login(open_browser=False, timeout=0, store=store)
                 self.assertEqual(credentials["project_id"], "p")
                 self.assertEqual(store.load(), {})

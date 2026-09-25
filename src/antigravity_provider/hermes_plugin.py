@@ -3,8 +3,9 @@ from __future__ import annotations
 import argparse
 from typing import Any
 
-from .hermes_provider import DEFAULT_MODEL, PLACEHOLDER_API_KEY, PLACEHOLDER_API_KEY_ENV, PROVIDER_NAME, register_provider_profile
-from .runtime import ensure_provider_profile_files, generate_chat_completion, openai_completion_object
+from .hermes_provider import PLACEHOLDER_API_KEY, PLACEHOLDER_API_KEY_ENV, PROVIDER_BASE_URL, PROVIDER_NAME, register_provider_profile
+from .models import DEFAULT_MODEL
+from .runtime import ensure_provider_profile_files, load_model_catalog
 
 
 def _is_antigravity_request(provider: str | None, request: dict[str, Any]) -> bool:
@@ -13,33 +14,14 @@ def _is_antigravity_request(provider: str | None, request: dict[str, Any]) -> bo
     return False
 
 
-def _error_message(exc: Exception) -> str:
-    message = " ".join(str(exc).split()) or type(exc).__name__
-    if "could not determine client id" in message.lower() or "connection error" in message.lower():
-        message += " If this happened after installing or updating the plugin, restart Hermes/Desktop and retry."
-    return f"Antigravity request failed: {message}"
+def antigravity_llm_request(**kwargs: Any) -> dict[str, dict[str, Any]]:
+    request = dict(kwargs.get("request") or {})
+    if _is_antigravity_request(kwargs.get("provider"), request):
+        session_id = kwargs.get("session_id")
+        if session_id:
+            request["_antigravity_session_id"] = str(session_id)
+    return {"request": request}
 
-
-def antigravity_llm_execution(**kwargs: Any) -> Any:
-    request = kwargs.get("request") or {}
-    next_call = kwargs.get("next_call")
-    if not _is_antigravity_request(kwargs.get("provider"), request):
-        return next_call(request) if callable(next_call) else request
-    try:
-        completion = generate_chat_completion(request)
-    except Exception as exc:
-        completion = {
-            "model": str(request.get("model") or DEFAULT_MODEL),
-            "choices": [
-                {
-                    "index": 0,
-                    "message": {"role": "assistant", "content": _error_message(exc)},
-                    "finish_reason": "stop",
-                }
-            ],
-            "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
-        }
-    return openai_completion_object(completion)
 
 
 def _save_placeholder_api_key() -> None:
@@ -61,24 +43,29 @@ def _setup_cli(parser: argparse.ArgumentParser) -> None:
     login.add_argument("--timeout", type=int, default=300, help="seconds to wait for the OAuth callback")
 
     select = sub.add_parser("select", help="set Antigravity as the active Hermes model without opening the model picker")
-    select.add_argument("model", nargs="?", default=DEFAULT_MODEL)
+    select.add_argument("model", nargs="?")
 
     sub.add_parser("status", help="show credential status")
     sub.add_parser("logout", help="remove saved browser OAuth credentials")
 
 
-def _select_model(model_id: str) -> None:
+def _select_model(model_id: str | None) -> None:
     try:
         from hermes_cli.config import load_config, save_config
     except Exception as exc:
         raise SystemExit(f"Hermes config helpers are not available: {exc}") from exc
+    if not model_id:
+        try:
+            model_id = load_model_catalog().default_model
+        except Exception:
+            model_id = DEFAULT_MODEL
     config = load_config()
     model_cfg = config.get("model")
     if not isinstance(model_cfg, dict):
         model_cfg = {"default": model_cfg} if model_cfg else {}
     model_cfg["provider"] = PROVIDER_NAME
     model_cfg["default"] = model_id
-    model_cfg["base_url"] = "http://127.0.0.1:8765/v1"
+    model_cfg["base_url"] = PROVIDER_BASE_URL
     model_cfg["api_mode"] = "chat_completions"
     config["model"] = model_cfg
     save_config(config)
@@ -88,11 +75,12 @@ def _select_model(model_id: str) -> None:
 
 def _status() -> None:
     from .credentials import CredentialStore, load_agy_keychain_credentials
-
     store = CredentialStore.default()
-    keychain = load_agy_keychain_credentials()
-    data = keychain or store.load()
-    source = "agy Keychain" if keychain else ("browser OAuth" if data else "none")
+
+    stored = store.load()
+    keychain = {} if stored else load_agy_keychain_credentials()
+    data = stored or keychain
+    source = "browser OAuth" if stored else ("agy Keychain" if keychain else "none")
     has_refresh = bool(data.get("refresh_token") or data.get("refresh"))
     has_access = bool(data.get("access_token") or data.get("access") or data.get("token"))
     print(f"credentials: {source}")
@@ -135,4 +123,4 @@ def register(ctx: Any) -> None:
         setup_fn=_setup_cli,
         handler_fn=_handle_cli,
     )
-    ctx.register_middleware("llm_execution", antigravity_llm_execution)
+    ctx.register_middleware("llm_request", antigravity_llm_request)

@@ -12,6 +12,21 @@ class ToolCallTests(unittest.TestCase):
         self.assertEqual(msg["tool_calls"][0]["function"]["name"], "get_time")
         self.assertEqual(out["choices"][0]["finish_reason"], "tool_calls")
 
+    def test_identical_tool_calls_receive_distinct_ids(self):
+        upstream = {
+            "candidates": [{
+                "content": {
+                    "parts": [
+                        {"functionCall": {"name": "get_time", "args": {}}},
+                        {"functionCall": {"name": "get_time", "args": {}}},
+                    ]
+                },
+                "finishReason": "STOP",
+            }]
+        }
+        calls = to_openai_completion("gemini-3.1-pro", upstream)["choices"][0]["message"]["tool_calls"]
+        self.assertNotEqual(calls[0]["id"], calls[1]["id"])
+
     def test_tool_result_maps_to_function_response(self):
         body = build_generate_content_request(
             model="google-antigravity/gemini-3.1-pro",

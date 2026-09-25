@@ -9,21 +9,12 @@ import uuid
 from copy import deepcopy
 from typing import Any
 
-from .models import WIRE_PROFILES, clamp_reasoning_effort, normalize_model_id, resolve_wire_model_id, strip_provider_prefix
+from .catalog import ModelCatalog, ResolvedRoute, fallback_catalog
+from .models import normalize_effort
 
 SKIP_THOUGHT_SIGNATURE = "skip_thought_signature_validator"
 
 
-def _thinking_budget(logical: str, effort: str) -> int:
-    if effort == "off":
-        return 0
-    if logical == "gemini-3.1-pro":
-        return 10001 if effort == "high" else 1001
-    if logical in {"gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.5-flash"}:
-        return {"low": 1000, "medium": 4000, "high": 10000}.get(effort, 1000)
-    if logical in {"gpt-oss-120b", "gpt-oss-120b-medium", "openai/gpt-oss-120b-maas"}:
-        return 8192
-    return {"minimal": 1024, "low": 4096, "medium": 8192, "high": 16384}.get(effort, 4096)
 
 
 def _content_text(content: Any) -> str:
@@ -80,31 +71,69 @@ def _parse_args(raw: Any) -> dict[str, Any]:
 def _schema(schema: Any) -> dict[str, Any]:
     if not isinstance(schema, dict):
         return {"type": "object", "properties": {}}
+    root = deepcopy(schema)
     banned = {"$schema", "$defs", "definitions", "additionalProperties", "patternProperties", "unevaluatedProperties"}
 
-    def clean(value: Any) -> Any:
-        if isinstance(value, dict):
-            if "anyOf" in value and isinstance(value["anyOf"], list) and value["anyOf"]:
-                branches = [b for b in value["anyOf"] if isinstance(b, dict)]
-                if branches:
-                    chosen = dict(branches[0])
-                    for b in branches[1:]:
-                        if "properties" in b and isinstance(b["properties"], dict):
-                            chosen.setdefault("properties", {}).update(b["properties"])
-                    merged = {k: v for k, v in value.items() if k != "anyOf" and k not in banned}
-                    for k, v in chosen.items():
-                        if k not in banned:
-                            merged.setdefault(k, v)
-                    return clean(merged)
-            return {k: clean(v) for k, v in value.items() if k not in banned}
-        if isinstance(value, list):
-            return [clean(v) for v in value]
+    def pointer(ref: str) -> Any:
+        if not ref.startswith("#/"):
+            raise ValueError(f"unsupported schema reference: {ref}")
+        value: Any = root
+        for token in ref[2:].split("/"):
+            token = token.replace("~1", "/").replace("~0", "~")
+            if not isinstance(value, dict) or token not in value:
+                raise ValueError(f"unresolved schema reference: {ref}")
+            value = value[token]
         return value
 
-    out = clean(deepcopy(schema))
+    def clean(value: Any, resolving: frozenset[str] = frozenset()) -> Any:
+        if isinstance(value, dict):
+            if isinstance(value.get("$ref"), str):
+                ref = value["$ref"]
+                if ref in resolving:
+                    raise ValueError(f"cyclic schema reference: {ref}")
+                resolved = clean(deepcopy(pointer(ref)), resolving | {ref})
+                siblings = {key: nested for key, nested in value.items() if key != "$ref"}
+                if siblings:
+                    if not isinstance(resolved, dict):
+                        raise ValueError(f"schema reference is not an object: {ref}")
+                    resolved.update(clean(siblings, resolving))
+                return resolved
+
+            union_key = "anyOf" if "anyOf" in value else ("oneOf" if "oneOf" in value else None)
+            if union_key:
+                branches = value[union_key]
+                if not isinstance(branches, list) or not branches:
+                    raise ValueError("unsupported schema union: empty union")
+                non_null = [
+                    branch for branch in branches
+                    if not (isinstance(branch, dict) and branch.get("type") == "null")
+                ]
+                if len(non_null) != 1 or len(non_null) == len(branches):
+                    raise ValueError("unsupported schema union: only nullable unions are supported")
+                merged = clean(non_null[0], resolving)
+                siblings = {key: nested for key, nested in value.items() if key != union_key}
+                if siblings:
+                    if not isinstance(merged, dict):
+                        raise ValueError("unsupported schema union")
+                    merged.update(clean(siblings, resolving))
+                return merged
+
+            raw_type = value.get("type")
+            if isinstance(raw_type, list):
+                non_null_types = [item for item in raw_type if item != "null"]
+                if len(non_null_types) != 1 or len(non_null_types) == len(raw_type):
+                    raise ValueError("unsupported schema union: only nullable unions are supported")
+                value = {**value, "type": non_null_types[0]}
+            return {key: clean(nested, resolving) for key, nested in value.items() if key not in banned}
+        if isinstance(value, list):
+            return [clean(nested, resolving) for nested in value]
+        return value
+
+    out = clean(root)
     if "type" not in out:
         out["type"] = "object"
-    out.setdefault("properties", {})
+    if out.get("type") == "object":
+        out.setdefault("properties", {})
     return out
 
 
@@ -143,27 +172,32 @@ def _tool_config(tools: list[dict[str, Any]], tool_choice: Any, wire_model: str)
     return None
 
 
-def _session_id(messages: list[dict[str, Any]]) -> str:
-    for message in messages:
-        if message.get("role") == "user":
-            text = _content_text(message.get("content"))
-            if text.strip():
-                digest = hashlib.sha256(text.encode("utf-8")).digest()[:8]
-                return "-" + str(int.from_bytes(digest, "big") & ((1 << 63) - 1))
+def _session_id(messages: list[dict[str, Any]], session_id: str | None = None) -> str:
+    identity = session_id
+    if not identity:
+        for message in messages:
+            if message.get("role") == "user":
+                text = _content_text(message.get("content"))
+                if text.strip():
+                    identity = text
+                    break
+    if identity:
+        digest = hashlib.sha256(identity.encode("utf-8")).digest()[:8]
+        return "-" + str(int.from_bytes(digest, "big") & ((1 << 63) - 1))
     return "-" + str(secrets.randbelow(9_000_000_000_000_000_000))
 
 
-def _envelope_labels(wire_model: str, step: int = 2) -> dict[str, str]:
-    profile = WIRE_PROFILES.get(wire_model) or {}
+def _envelope_labels(route: ResolvedRoute, step: int = 2) -> dict[str, str]:
+    used_claude = route.wire_model.startswith("claude-")
     labels = {
         "last_step_index": str(step - 1),
         "trajectory_id": str(uuid.uuid4()),
-        "used_claude": str(wire_model.startswith("claude-")).lower(),
-        "used_claude_conservative": str(wire_model.startswith("claude-")).lower(),
-        "used_non_gemini_model": str(bool(profile.get("usedNonGeminiModel"))).lower(),
+        "used_claude": str(used_claude).lower(),
+        "used_claude_conservative": str(used_claude).lower(),
+        "used_non_gemini_model": str(route.used_non_gemini_model).lower(),
     }
-    if profile.get("modelEnum"):
-        labels["model_enum"] = str(profile["modelEnum"])
+    if route.model_enum:
+        labels["model_enum"] = route.model_enum
     return labels
 
 
@@ -178,12 +212,12 @@ def build_generate_content_request(
     temperature: float | None = None,
     top_p: float | None = None,
     tool_choice: Any = None,
+    session_id: str | None = None,
+    catalog: ModelCatalog | None = None,
 ) -> dict[str, Any]:
-    logical = strip_provider_prefix(normalize_model_id(model))
-    effort = clamp_reasoning_effort(model, reasoning_effort)
-    wire_model = resolve_wire_model_id(model, effort)
-    profile = WIRE_PROFILES.get(wire_model, {})
-    actual_wire_model = str(profile.get("wireModel") or wire_model)
+    effort = normalize_effort(reasoning_effort)
+    route = (catalog or fallback_catalog()).resolve(model, effort)
+    actual_wire_model = route.wire_model
 
     system_parts: list[dict[str, str]] = []
     contents: list[dict[str, Any]] = []
@@ -212,9 +246,8 @@ def build_generate_content_request(
                     call_names[str(tool_call["id"])] = name
                 part = {"functionCall": {"name": name, "args": _parse_args(fn.get("arguments") if isinstance(fn, dict) else None)}}
                 if (
-                    wire_model.startswith("gemini-3")
-                    or wire_model.startswith("gemini-pro")
-                    or actual_wire_model.startswith("gemini-3")
+                    actual_wire_model.startswith("gemini-3")
+                    or actual_wire_model.startswith("gemini-pro")
                 ):
                     part["thoughtSignature"] = SKIP_THOUGHT_SIGNATURE
                 parts.append(part)
@@ -231,11 +264,18 @@ def build_generate_content_request(
     if not contents:
         contents.append({"role": "user", "parts": [{"text": "Continue."}]})
 
-    cap = int(profile.get("maxOutputTokens") or 65535)
     generation_config: dict[str, Any] = {
-        "maxOutputTokens": min(max_tokens, cap) if isinstance(max_tokens, int) and max_tokens > 0 else cap,
-        "thinkingConfig": {"includeThoughts": effort != "off", "thinkingBudget": _thinking_budget(logical, effort)},
+        "maxOutputTokens": (
+            min(max_tokens, route.max_output_tokens)
+            if isinstance(max_tokens, int) and max_tokens > 0
+            else route.max_output_tokens
+        ),
     }
+    if route.thinking_budget is not None:
+        generation_config["thinkingConfig"] = {
+            "includeThoughts": route.include_thoughts,
+            "thinkingBudget": route.thinking_budget,
+        }
     if temperature is not None:
         generation_config["temperature"] = temperature
     if top_p is not None:
@@ -244,15 +284,15 @@ def build_generate_content_request(
     request: dict[str, Any] = {
         "contents": contents,
         "generationConfig": generation_config,
-        "sessionId": _session_id(messages),
-        "labels": _envelope_labels(wire_model),
+        "sessionId": _session_id(messages, session_id),
+        "labels": _envelope_labels(route),
     }
     if system_parts:
         request["systemInstruction"] = {"role": "system", "parts": system_parts}
     converted_tools = _tools(tools or [])
     if converted_tools:
         request["tools"] = converted_tools
-    config = _tool_config(tools or [], tool_choice, wire_model)
+    config = _tool_config(tools or [], tool_choice, actual_wire_model)
     if config:
         request["toolConfig"] = config
 

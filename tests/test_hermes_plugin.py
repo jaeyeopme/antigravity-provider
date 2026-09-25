@@ -3,7 +3,8 @@ import unittest
 from pathlib import Path
 
 import antigravity_provider.hermes_plugin as plugin
-from antigravity_provider.runtime import ensure_provider_profile_files, openai_completion_object
+import antigravity_provider.runtime as runtime
+from antigravity_provider.runtime import HermesAntigravityClient, ensure_provider_profile_files, openai_completion_object
 
 
 class FakeCtx:
@@ -19,53 +20,58 @@ class FakeCtx:
 
 
 class HermesPluginTests(unittest.TestCase):
-    def test_register_adds_cli_and_llm_middleware(self):
+    def test_register_adds_cli_and_session_request_middleware(self):
         ctx = FakeCtx()
         plugin.register(ctx)
         self.assertIn("agy", ctx.cli)
-        self.assertEqual(ctx.middleware[0][0], "llm_execution")
+        self.assertEqual(ctx.middleware[0][0], "llm_request")
 
-    def test_middleware_passthrough_for_other_provider(self):
-        seen = []
-        out = plugin.antigravity_llm_execution(provider="openai", request={"model": "x"}, next_call=lambda req: seen.append(req) or "ok")
-        self.assertEqual(out, "ok")
-        self.assertEqual(seen, [{"model": "x"}])
+    def test_request_middleware_passthrough_for_other_provider(self):
+        request = {"model": "x"}
+        out = plugin.antigravity_llm_request(provider="openai", request=request, session_id="s")
+        self.assertEqual(out, {"request": request})
 
-    def test_middleware_returns_openai_compatible_object(self):
-        old = plugin.generate_chat_completion
+    def test_request_middleware_injects_real_session_id(self):
+        out = plugin.antigravity_llm_request(
+            provider="antigravity",
+            request={"model": "gemini-3.1-pro"},
+            session_id="hermes-session",
+        )
+        self.assertEqual(out["request"]["_antigravity_session_id"], "hermes-session")
+
+    def test_custom_client_returns_openai_compatible_object(self):
+        old = runtime.generate_chat_completion
         try:
-            plugin.generate_chat_completion = lambda request: {
+            runtime.generate_chat_completion = lambda request, session_id=None: {
                 "id": "chatcmpl-test",
                 "object": "chat.completion",
                 "model": request["model"],
                 "choices": [{"index": 0, "message": {"role": "assistant", "content": "pong"}, "finish_reason": "stop"}],
                 "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
             }
-            out = plugin.antigravity_llm_execution(
-                provider="antigravity",
-                request={"model": "google-antigravity/gemini-3.1-pro", "messages": [{"role": "user", "content": "ping"}]},
-                next_call=lambda req: self.fail("should not call downstream"),
+            out = HermesAntigravityClient().chat.completions.create(
+                model="google-antigravity/gemini-3.1-pro",
+                messages=[{"role": "user", "content": "ping"}],
+                _antigravity_session_id="hermes-session",
             )
             self.assertEqual(out.choices[0].message.content, "pong")
             self.assertIsNone(out.choices[0].message.tool_calls)
         finally:
-            plugin.generate_chat_completion = old
+            runtime.generate_chat_completion = old
 
-    def test_middleware_reports_antigravity_error_without_downstream_fallback(self):
-        old = plugin.generate_chat_completion
+    def test_custom_client_propagates_provider_errors(self):
+        old = runtime.generate_chat_completion
         try:
-            plugin.generate_chat_completion = lambda request: (_ for _ in ()).throw(
-                RuntimeError("OAuth token request failed: Could not determine client ID from request.")
+            runtime.generate_chat_completion = lambda request, session_id=None: (_ for _ in ()).throw(
+                RuntimeError("provider down")
             )
-            out = plugin.antigravity_llm_execution(
-                provider="antigravity",
-                request={"model": "google-antigravity/gemini-3.1-pro", "messages": []},
-                next_call=lambda req: self.fail("should not call downstream"),
-            )
-            self.assertIn("Antigravity request failed: OAuth token request failed", out.choices[0].message.content)
-            self.assertIn("restart Hermes/Desktop", out.choices[0].message.content)
+            with self.assertRaisesRegex(RuntimeError, "provider down"):
+                HermesAntigravityClient().chat.completions.create(
+                    model="gemini-3.1-pro",
+                    messages=[],
+                )
         finally:
-            plugin.generate_chat_completion = old
+            runtime.generate_chat_completion = old
 
     def test_openai_completion_object_defaults_tool_calls(self):
         obj = openai_completion_object({
