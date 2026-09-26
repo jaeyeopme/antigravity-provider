@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-python -m unittest discover -v
+PYTHONPATH="${PWD}/src${PYTHONPATH:+:$PYTHONPATH}" python -m unittest discover -v
 
-# Direct import check for the pip/editable path.
-HERMES_HOME="${HERMES_HOME:-$(mktemp -d)}" python - <<'PY'
+# Direct import check for the checkout source path.
+PYTHONPATH="${PWD}/src${PYTHONPATH:+:$PYTHONPATH}" HERMES_HOME="${HERMES_HOME:-$(mktemp -d)}" python - <<'PY'
 from antigravity_provider.hermes_plugin import register
 
 class Ctx:
