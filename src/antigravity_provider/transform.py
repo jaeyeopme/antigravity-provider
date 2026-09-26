@@ -47,7 +47,6 @@ def _parts_from_content(content: Any) -> list[dict[str, Any]]:
                 if isinstance(url, str) and url.startswith("data:") and ";base64," in url:
                     meta, data = url.split(",", 1)
                     mime = meta[5:].split(";", 1)[0] or "application/octet-stream"
-                    # ponytail: trust data URL shape; provider validates bytes.
                     parts.append({"inlineData": {"mimeType": mime, "data": data}})
                 else:
                     parts.append({"text": "[image omitted]"})
@@ -85,8 +84,6 @@ def _schema(schema: Any) -> dict[str, Any]:
             value = value[token]
         return value
 
-    # ponytail: Cloud Code's Claude bridge rejects unions; a permissive superset
-    # preserves every valid call and Hermes validates the selected operation.
     def widen(branches: list[Any]) -> dict[str, Any]:
         if not branches or not all(isinstance(branch, dict) for branch in branches):
             return {}

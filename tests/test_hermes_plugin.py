@@ -1,6 +1,9 @@
+import asyncio
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 
 import antigravity_provider.hermes_plugin as plugin
 import antigravity_provider.runtime as runtime
@@ -58,6 +61,43 @@ class HermesPluginTests(unittest.TestCase):
             self.assertIsNone(out.choices[0].message.tool_calls)
         finally:
             runtime.generate_chat_completion = old
+
+    def test_custom_client_supports_async_completion_and_streaming(self):
+        completion = {
+            "id": "chatcmpl-test",
+            "object": "chat.completion",
+            "model": "google-antigravity/gemini-3.1-pro",
+            "choices": [{"index": 0, "message": {"role": "assistant", "content": "pong"}, "finish_reason": "stop"}],
+            "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+        }
+        chunk = SimpleNamespace(choices=[SimpleNamespace(delta=SimpleNamespace(content="pong"))])
+
+        async def exercise():
+            client = HermesAntigravityClient()
+            with (
+                patch.object(runtime, "generate_chat_completion", return_value=completion),
+                patch.object(runtime, "stream_chat_completion", return_value=iter([chunk])),
+            ):
+                sync_response = client.chat.completions.create(
+                    model=completion["model"],
+                    messages=[{"role": "user", "content": "ping"}],
+                )
+                self.assertEqual(sync_response.choices[0].message.content, "pong")
+                response = await client.chat.completions.create(
+                    model=completion["model"],
+                    messages=[{"role": "user", "content": "ping"}],
+                )
+                stream = await client.chat.completions.create(
+                    model=completion["model"],
+                    messages=[{"role": "user", "content": "ping"}],
+                    stream=True,
+                )
+                chunks = [value async for value in stream]
+            self.assertEqual(response.choices[0].message.content, "pong")
+            self.assertEqual(chunks[0].choices[0].delta.content, "pong")
+            self.assertTrue(client.HERMES_SKIP_ASYNC_WRAP)
+
+        asyncio.run(exercise())
 
     def test_custom_client_propagates_provider_errors(self):
         old = runtime.generate_chat_completion
