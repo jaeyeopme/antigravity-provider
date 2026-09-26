@@ -100,11 +100,13 @@ def _pick_variant(group: _ModelGroup, effort: str) -> RouteSpec:
         "medium": ("medium", "low", "high", "minimal"),
         "high": ("high", "medium", "low", "minimal"),
     }
+    if effort in group.variants:
+        return group.variants[effort]
+    if group.default is not None:
+        return group.default
     for level in orders[effort]:
         if level in group.variants:
             return group.variants[level]
-    if group.default is not None:
-        return group.default
     if group.variants:
         return next(iter(group.variants.values()))
     return RouteSpec(group.public_id)
@@ -379,7 +381,10 @@ class CatalogManager:
             saved = (checked_at, catalog, payload)
             self._entries[project_key] = saved
             self._current = catalog
-            self._save(project_key, checked_at, payload)
+            try:
+                self._save(project_key, checked_at, payload)
+            except OSError:
+                pass
             return catalog
 
 

@@ -99,8 +99,8 @@ The native provider client handles:
   `extra_body.reasoning.effort` input hints.
 - `max_tokens`, `max_completion_tokens`, `temperature`, and `top_p`.
 - Data-URL images as inline data. Remote image URLs become text placeholders.
-- Local JSON Schema `$ref` resolution and nullable unions. Other `anyOf`/`oneOf`
-  unions fail explicitly instead of being flattened incorrectly.
+- Local JSON Schema `$ref` resolution, nullable unions, and backend-compatible
+  permissive conversion of other `anyOf`/`oneOf` unions.
 
 Provider failures propagate through Hermes retry, fallback, and error telemetry.
 

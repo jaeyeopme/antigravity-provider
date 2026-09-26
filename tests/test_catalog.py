@@ -84,6 +84,31 @@ class CatalogTests(unittest.TestCase):
         catalog = build_catalog(CATALOG_PAYLOAD)
         self.assertEqual(catalog.default_model, "google-antigravity/gemini-3.9-flash")
 
+    def test_unsuffixed_default_beats_nonmatching_thinking_variant(self):
+        catalog = build_catalog({
+            "models": {
+                "gemini-2.5-flash": {
+                    "supportsThinking": True,
+                    "thinkingBudget": -1,
+                },
+                "gemini-2.5-flash-thinking": {
+                    "supportsThinking": True,
+                    "thinkingBudget": -1,
+                },
+            },
+            "agentModelSorts": {
+                "gemini-2.5-flash": 1,
+                "gemini-2.5-flash-thinking": 2,
+            },
+        })
+        for effort in ("off", "minimal", "low", "medium"):
+            route = catalog.resolve("gemini-2.5-flash", effort)
+            self.assertEqual(route.wire_model, "gemini-2.5-flash")
+        self.assertEqual(
+            catalog.resolve("gemini-2.5-flash", "high").wire_model,
+            "gemini-2.5-flash-thinking",
+        )
+
     def test_advertised_variants_beat_stale_unadvertised_tiered_route(self):
         payload = {
             "models": {
@@ -151,6 +176,20 @@ class CatalogTests(unittest.TestCase):
             client.payload = {"models": {}}
             second = manager.get(client=client, access_token="token", project_id="project", force=True)
             self.assertEqual(second.model_ids(), first.model_ids())
+
+    def test_cache_write_failure_does_not_discard_live_catalog(self):
+        class Client:
+            def fetch_available_models(self, *, access_token, project_id):
+                return CATALOG_PAYLOAD
+
+        class ReadOnlyCatalogManager(CatalogManager):
+            def _save(self, project_key, checked_at, payload):
+                raise OSError("read-only cache")
+
+        with tempfile.TemporaryDirectory() as directory:
+            manager = ReadOnlyCatalogManager(path=Path(directory) / "catalog.json")
+            catalog = manager.get(client=Client(), access_token="token", project_id="project")
+        self.assertIn("google-antigravity/gemini-3.9-flash", catalog.model_ids())
 
 
 if __name__ == "__main__":

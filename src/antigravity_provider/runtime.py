@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import threading
 import time
 from pathlib import Path
@@ -236,10 +237,68 @@ def openai_completion_object(completion: dict[str, Any]) -> SimpleNamespace:
     return _namespace(completion)
 
 
+_END = object()
+
+
+class _AsyncIterator:
+    def __init__(self, values: Iterable[Any]) -> None:
+        self._iterator = iter(values)
+
+    def __aiter__(self) -> "_AsyncIterator":
+        return self
+
+    async def __anext__(self) -> Any:
+        value = await asyncio.to_thread(next, self._iterator, _END)
+        if value is _END:
+            raise StopAsyncIteration
+        return value
+
+    async def aclose(self) -> None:
+        close = getattr(self._iterator, "close", None)
+        if callable(close):
+            await asyncio.to_thread(close)
+
+
+class _CompletionCall:
+    def __init__(self, payload: dict[str, Any], stream: bool, session_id: str | None) -> None:
+        self._payload = payload
+        self._stream = stream
+        self._session_id = session_id
+        self._value: Any = _END
+        self._lock = threading.Lock()
+
+    def _resolve(self) -> Any:
+        with self._lock:
+            if self._value is _END:
+                self._value = HermesAntigravityClient._create_chat_completion_sync(
+                    self._payload,
+                    self._stream,
+                    self._session_id,
+                )
+        return self._value
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._resolve(), name)
+
+    def __iter__(self):
+        return iter(self._resolve())
+
+    def __next__(self) -> Any:
+        return next(self._resolve())
+
+    def __await__(self):
+        return self._resolve_async().__await__()
+
+    async def _resolve_async(self) -> Any:
+        value = await asyncio.to_thread(self._resolve)
+        return _AsyncIterator(value) if self._stream else value
+
+
 class HermesAntigravityClient:
     """OpenAI-client-compatible facade over Antigravity's native protocol."""
 
     HERMES_SKIP_TRANSPORT_WRAP = True
+    HERMES_SKIP_ASYNC_WRAP = True
 
     def __init__(self, *, api_key: str = "", base_url: str = "", **_: Any) -> None:
         self.api_key = api_key
@@ -260,10 +319,21 @@ class HermesAntigravityClient:
         **kwargs: Any,
     ) -> Any:
         payload = {"model": model, "messages": messages or [], **kwargs}
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return self._create_chat_completion_sync(payload, stream, _antigravity_session_id)
+        return _CompletionCall(payload, stream, _antigravity_session_id)
+
+    @staticmethod
+    def _create_chat_completion_sync(
+        payload: dict[str, Any],
+        stream: bool,
+        session_id: str | None,
+    ) -> Any:
         if stream:
-            return stream_chat_completion(payload, session_id=_antigravity_session_id)
-        completion = generate_chat_completion(payload, session_id=_antigravity_session_id)
-        return openai_completion_object(completion)
+            return stream_chat_completion(payload, session_id=session_id)
+        return openai_completion_object(generate_chat_completion(payload, session_id=session_id))
 
 
 def ensure_provider_profile_files(root: Path | None = None) -> Path:
@@ -289,7 +359,7 @@ def ensure_provider_profile_files(root: Path | None = None) -> Path:
     (plugin_dir / "plugin.yaml").write_text(
         "name: antigravity\n"
         "kind: model-provider\n"
-        "version: 0.2.1\n"
+        "version: 0.2.2\n"
         "description: Google Antigravity provider profile\n",
         encoding="utf-8",
     )

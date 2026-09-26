@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.2
+
+- Support Hermes asynchronous auxiliary requests through the native Antigravity transport.
+- Prefer an unsuffixed live model when the requested reasoning variant is unavailable.
+- Keep a live model catalog usable when its optional disk cache cannot be written.
+
 ## 0.2.1
 
 - Preserve Hermes tool-schema unions as backend-compatible supersets instead of rejecting or selecting one branch.
