@@ -276,14 +276,14 @@ _SEED_PAYLOAD = {
         "gemini-3.6-flash-low": {"model": "MODEL_PLACEHOLDER_M73", "maxOutputTokens": 65536, "supportsThinking": True, "thinkingBudget": 1000},
         "gemini-3.1-pro-low": {"model": "MODEL_PLACEHOLDER_M36", "maxOutputTokens": 65535, "supportsThinking": True, "thinkingBudget": 1001},
         "gemini-pro-agent": {"model": "MODEL_PLACEHOLDER_M16", "maxOutputTokens": 65535, "supportsThinking": True, "thinkingBudget": 10001},
-        "gemini-3.5-flash-extra-low": {"model": "MODEL_PLACEHOLDER_M187", "maxOutputTokens": 65536, "supportsThinking": True, "thinkingBudget": 1000},
-        "gemini-3.5-flash-low": {"model": "MODEL_PLACEHOLDER_M20", "maxOutputTokens": 65536, "supportsThinking": True, "thinkingBudget": 4000},
-        "gemini-3-flash-agent": {"model": "MODEL_PLACEHOLDER_M132", "maxOutputTokens": 65536, "supportsThinking": True, "thinkingBudget": 10000},
+        "gemini-3-flash": {"model": "MODEL_PLACEHOLDER_M18", "maxOutputTokens": 65536, "supportsThinking": True, "thinkingBudget": -1},
+        "gemini-3.5-flash-lite": {"model": "MODEL_PLACEHOLDER_M198", "maxOutputTokens": 65535, "supportsThinking": True, "thinkingBudget": -1},
         "claude-sonnet-4-6": {"maxOutputTokens": 64000, "supportsThinking": True, "thinkingBudget": 1024},
         "claude-opus-4-6-thinking": {"maxOutputTokens": 64000, "supportsThinking": True, "thinkingBudget": 1024},
         "gpt-oss-120b-medium": {"model": "MODEL_OPENAI_GPT_OSS_120B_MEDIUM", "maxOutputTokens": 32768, "supportsThinking": True, "thinkingBudget": 8192, "usedNonGeminiModel": True},
     },
     "defaultAgentModelId": "gemini-3.1-pro-low",
+    "commitMessageModelIds": ["gemini-3.5-flash-lite"],
 }
 _FALLBACK_CATALOG = build_catalog(_SEED_PAYLOAD)
 

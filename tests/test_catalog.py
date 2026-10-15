@@ -118,6 +118,11 @@ class CatalogTests(unittest.TestCase):
         }
         self.assertEqual(build_catalog(payload).aux_model, "google-antigravity/claude-sonnet-4-6")
 
+    def test_seed_lists_its_aux_model_and_no_retired_flash(self):
+        seed = fallback_catalog()
+        self.assertIn(seed.aux_model, seed.model_ids())
+        self.assertNotIn("google-antigravity/gemini-3.5-flash", seed.model_ids())
+
     def test_unsuffixed_default_beats_nonmatching_thinking_variant(self):
         catalog = build_catalog({
             "models": {
