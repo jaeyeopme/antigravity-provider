@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.2
 
 - Keep tool schemas inside what the backend accepts: drop unsupported fields (`const` becomes a one-value `enum`), send enum values as strings, give arrays `items`, and list only defined properties as `required`. One MCP tool using these failed every request.
 - Keep Claude's output limit above its thinking budget; a small `max_tokens` made Claude routes fail with 400.

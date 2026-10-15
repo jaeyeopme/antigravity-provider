@@ -1,5 +1,5 @@
 manifest_version: 1
 name: antigravity-provider
-version: 0.3.1
+version: 0.3.2
 kind: standalone
 description: Hermes native provider plugin for Google Antigravity.
