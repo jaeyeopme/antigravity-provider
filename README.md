@@ -168,8 +168,19 @@ plugin when `hermes` and `git` are available. With Hermes importable,
 call, against a local fake backend. Run it before releases and after Hermes
 upgrades.
 
-The version lives in `src/antigravity_provider/__init__.py`; keep `plugin.yaml`
-and `CHANGELOG.md` in step (a test enforces it). Tag releases as `vX.Y.Z`.
+`hermes plugins install` and `update` take the latest commit on `main`, so a
+merge to `main` is what reaches users; versions and tags are records.
+
+- Code changes go through a pull request, one per batch of related work, with
+  one commit per change. Squash-merge it once CI passes. Docs and chores can go
+  straight to `main`.
+- A pull request does not change the version. It adds its user-visible changes
+  under `## Unreleased` at the top of `CHANGELOG.md`.
+- To release, once a batch is done or a fix needs announcing, make one
+  `chore: release X.Y.Z` commit: rename `## Unreleased` to `## X.Y.Z` (and
+  start a new empty `## Unreleased`), and set the version in
+  `src/antigravity_provider/__init__.py` and `plugin.yaml` (a test keeps them
+  and the changelog in step). Then tag it `vX.Y.Z` and publish a GitHub release.
 
 Modules in `src/antigravity_provider/`, from Hermes inward:
 
