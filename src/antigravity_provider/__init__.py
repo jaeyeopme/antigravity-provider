@@ -1,3 +1,3 @@
 """Google Antigravity provider plugin for Hermes Agent."""
 
-__version__ = "0.3.3"
+__version__ = "2026.10.15.3"

@@ -10,7 +10,7 @@ OAUTH_CREDENTIALS_FILE = ".antigravity_oauth.json"
 
 
 def _legacy_hermes_home() -> Path:
-    # Before 0.3.0 the plugin ignored Hermes' platform defaults (e.g. %LOCALAPPDATA% on Windows).
+    # Before 2026.10.15 the plugin ignored Hermes' platform defaults (e.g. %LOCALAPPDATA% on Windows).
     return Path(os.getenv("HERMES_HOME") or Path.home() / ".hermes").expanduser()
 
 
@@ -39,7 +39,7 @@ def _uses_platform_default_home() -> bool:
 def oauth_credentials_path() -> Path:
     path = hermes_home() / OAUTH_CREDENTIALS_FILE
     legacy = _legacy_hermes_home() / OAUTH_CREDENTIALS_FILE
-    # Before 0.3.0 a login on e.g. Windows was saved under ~/.hermes instead of Hermes' platform
+    # Before 2026.10.15 a login on e.g. Windows was saved under ~/.hermes instead of Hermes' platform
     # default. Keep using it, but never for a profile: that file belongs to the default profile.
     if not path.exists() and legacy != path and legacy.exists() and _uses_platform_default_home():
         return legacy

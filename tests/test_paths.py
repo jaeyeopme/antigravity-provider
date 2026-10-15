@@ -30,7 +30,7 @@ class PathTests(unittest.TestCase):
                 self.assertEqual(paths.model_cache_path(), Path(hermes) / ".antigravity_models.json")
 
     def test_login_saved_under_home_dir_by_earlier_version_is_still_found(self):
-        # e.g. Windows: Hermes uses %LOCALAPPDATA%/hermes, versions before 0.3.0 used ~/.hermes.
+        # e.g. Windows: Hermes uses %LOCALAPPDATA%/hermes, versions before 2026.10.15 used ~/.hermes.
         with tempfile.TemporaryDirectory() as platform_home, tempfile.TemporaryDirectory() as user_home:
             legacy = Path(user_home) / ".hermes" / ".antigravity_oauth.json"
             legacy.parent.mkdir()

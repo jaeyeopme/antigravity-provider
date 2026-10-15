@@ -179,8 +179,7 @@ merge to `main` is a release. The repository is kept that way:
   `.2`, ... for another code merge on the same day. It adds its section to
   `CHANGELOG.md` headed `## YYYY.M.D`. The version lives in
   `src/antigravity_provider/__init__.py` and `plugin.yaml`; a test keeps them
-  and the changelog in step. Entries up to `0.3.3` predate this rule and keep
-  their numbers.
+  and the changelog in step.
 - **Everything else** (docs, tests, scripts, CI, descriptive metadata such as
   the `plugin.yaml` description) goes straight to `main`, without a version bump
   or changelog entry.
