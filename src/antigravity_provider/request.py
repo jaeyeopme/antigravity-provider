@@ -257,7 +257,14 @@ def _contents(messages: list[dict[str, Any]], wire_model: str) -> tuple[list[dic
                 contents.append({"role": "model", "parts": parts})
         elif role == "tool":
             name = message.get("name") or call_names.get(str(message.get("tool_call_id") or "")) or "tool"
-            part = {"functionResponse": {"name": name, "response": {"output": _content_text(message.get("content"))}}}
+            content = message.get("content")
+            result_parts = _parts_from_content(content) if isinstance(content, list) else []
+            output = "\n".join(p["text"] for p in result_parts if "text" in p) if result_parts else _content_text(content)
+            part = {"functionResponse": {"name": name, "response": {"output": output}}}
+            images = [p for p in result_parts if "inlineData" in p]
+            if images:
+                # Gemini and Claude routes read images here; beside the response, gpt-oss routes fail.
+                part["functionResponse"]["parts"] = images
             if message.get("tool_call_id"):
                 part["functionResponse"]["id"] = str(message["tool_call_id"])
             previous = contents[-1] if contents else None
@@ -282,13 +289,16 @@ def build_generate_content_request(
     contents, system_parts = _contents(request.messages, route.wire_model)
 
     max_tokens = request.max_tokens
-    generation_config: dict[str, Any] = {
-        "maxOutputTokens": (
-            min(max_tokens, route.max_output_tokens)
-            if isinstance(max_tokens, int) and max_tokens > 0
-            else route.max_output_tokens
-        ),
-    }
+    max_output = (
+        min(max_tokens, route.max_output_tokens)
+        if isinstance(max_tokens, int) and max_tokens > 0
+        else route.max_output_tokens
+    )
+    budget = route.thinking_budget
+    if route.wire_model.startswith("claude-") and budget is not None and 0 < budget and max_output <= budget:
+        # Claude counts thinking toward max_tokens and rejects max_tokens <= the thinking budget.
+        max_output = min(budget + max_output, route.max_output_tokens)
+    generation_config: dict[str, Any] = {"maxOutputTokens": max_output}
     if route.thinking_budget is not None:
         generation_config["thinkingConfig"] = {
             "includeThoughts": route.include_thoughts,

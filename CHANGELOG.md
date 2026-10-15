@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.2
+
+- Keep tool schemas inside what the backend accepts: drop unsupported fields (`const` becomes a one-value `enum`), send enum values as strings, give arrays `items`, and list only defined properties as `required`. One MCP tool using these failed every request.
+- Keep Claude's output limit above its thinking budget; a small `max_tokens` made Claude routes fail with 400.
+- Send images from tool results (screenshots) to the model instead of a text placeholder.
+
 ## 0.3.1
 
 - Send tool call IDs back with replayed tool calls and results; Claude and gpt-oss routes rejected the next turn after any tool call without them.

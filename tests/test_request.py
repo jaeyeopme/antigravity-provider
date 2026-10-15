@@ -5,13 +5,14 @@ from antigravity_provider.errors import AntigravityError
 from antigravity_provider.models import normalize_model_id
 
 
-def build(*, model, messages, project_id="p", tools=None, reasoning_effort=None, session_id=None, tool_choice=None):
+def build(*, model, messages, project_id="p", tools=None, reasoning_effort=None, session_id=None, tool_choice=None, max_tokens=None):
     request = ChatRequest(
         model=normalize_model_id(model),
         messages=messages,
         tools=tools or [],
         tool_choice=tool_choice,
         reasoning_effort=reasoning_effort,
+        max_tokens=max_tokens,
     )
     return build_generate_content_request(request, project_id=project_id, session_id=session_id)
 
@@ -143,6 +144,32 @@ class RequestTests(unittest.TestCase):
         response = body["request"]["contents"][-1]["parts"][0]["functionResponse"]
         self.assertEqual(response["name"], "get_time")
         self.assertEqual(response["response"]["output"], '{"time":"now"}')
+
+    def test_tool_result_images_ride_inside_the_function_response(self):
+        content = [
+            {"type": "text", "text": "Screenshot captured."},
+            {"type": "image_url", "image_url": {"url": "data:image/png;base64,AAAA"}},
+            {"type": "image_url", "image_url": {"url": "https://example.com/remote.png"}},
+        ]
+        body = build(model="gemini-3-flash", messages=[
+            {"role": "assistant", "tool_calls": [{"id": "c1", "type": "function", "function": {"name": "shot", "arguments": "{}"}}]},
+            {"role": "tool", "tool_call_id": "c1", "content": content},
+        ])
+        parts = body["request"]["contents"][-1]["parts"]
+        self.assertEqual(len(parts), 1)  # an image beside the response breaks gpt-oss routes
+        response = parts[0]["functionResponse"]
+        self.assertEqual(response["response"]["output"], "Screenshot captured.\n[image omitted]")
+        self.assertEqual(response["parts"], [{"inlineData": {"mimeType": "image/png", "data": "AAAA"}}])
+
+    def test_claude_max_tokens_stays_above_thinking_budget(self):
+        body = build(model="claude-sonnet-4-6", messages=[{"role": "user", "content": "hi"}], reasoning_effort="low", max_tokens=64)
+        config = body["request"]["generationConfig"]
+        self.assertGreater(config["maxOutputTokens"], config["thinkingConfig"]["thinkingBudget"])
+        self.assertEqual(config["maxOutputTokens"], config["thinkingConfig"]["thinkingBudget"] + 64)
+
+    def test_gemini_max_tokens_is_passed_through(self):
+        body = build(model="gemini-3.1-pro", messages=[{"role": "user", "content": "hi"}], reasoning_effort="low", max_tokens=64)
+        self.assertEqual(body["request"]["generationConfig"]["maxOutputTokens"], 64)
 
 
     def _tool_history(self, model, extra_content=None):
