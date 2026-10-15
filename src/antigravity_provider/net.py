@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import http.client
 import json
 import urllib.error
 import urllib.parse
@@ -41,6 +42,6 @@ def request_json(
             payload = json.loads(response.read().decode("utf-8") or "{}")
     except urllib.error.HTTPError as exc:
         raise AntigravityError(f"{error_prefix} ({exc.code}): {http_error_detail(exc)}", status=exc.code) from exc
-    except (urllib.error.URLError, TimeoutError, ValueError) as exc:
+    except (OSError, http.client.HTTPException, ValueError) as exc:
         raise AntigravityError(f"{error_prefix}: {exc}", status=502) from exc
     return payload if isinstance(payload, dict) else {}

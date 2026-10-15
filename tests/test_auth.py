@@ -115,6 +115,22 @@ class RefreshAfterRejectionTests(unittest.TestCase):
         h.manager.refresh(h.manager.current())
         self.assertEqual(h.manager.current().access_token, "new-1")
 
+    def test_logout_during_request_does_not_bring_browser_login_back(self):
+        h = Harness(self.tmp.name, keychain=fresh(access_token="keychain"))
+        h.store.save(Credentials.from_mapping(fresh(access_token="browser"), source=SOURCE_BROWSER))
+        rejected = h.manager.current()
+        h.manager.logout()
+        self.assertEqual(h.manager.refresh(rejected).access_token, "keychain")
+        self.assertIsNone(h.store.load())
+        self.assertEqual(h.refreshes, [])
+
+    def test_keychain_token_refreshed_by_another_request_is_reused(self):
+        h = Harness(self.tmp.name, keychain=fresh())
+        stale = h.manager.current()
+        h.manager.refresh(stale)
+        h.manager.refresh(stale)
+        self.assertEqual(len(h.refreshes), 1)
+
     def test_without_refresh_token_stays_expired(self):
         h = Harness(self.tmp.name)
         with self.assertRaises(TokenExpired):

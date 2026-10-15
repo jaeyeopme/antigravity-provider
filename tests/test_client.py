@@ -86,6 +86,32 @@ class StreamTests(unittest.TestCase):
         self.assertTrue(response.closed)
 
 
+class ModelDiscoveryTests(unittest.TestCase):
+    def test_401_on_one_endpoint_is_reported_even_if_another_fails_differently(self):
+        def fake_urlopen(request, timeout):
+            raise http_error(request.full_url, 401 if "daily" in request.full_url else 403)
+
+        client = AntigravityClient(endpoints=["https://daily", "https://sandbox"])
+        with patch("antigravity_provider.client.urllib.request.urlopen", fake_urlopen):
+            with self.assertRaises(TokenExpired):
+                client.fetch_available_models(access_token="tok", project_id="p")
+
+    def test_mid_stream_connection_reset_is_a_provider_error(self):
+        class Broken(Response):
+            def __iter__(self):
+                yield PONG
+                yield b"\n"
+                raise ConnectionResetError("reset")
+
+        client = AntigravityClient(endpoints=["https://only"])
+        with patch("antigravity_provider.client.urllib.request.urlopen", lambda request, timeout: Broken([])):
+            stream = client.stream_generate(access_token="tok", body={})
+            next(stream)
+            with self.assertRaises(AntigravityError) as raised:
+                next(stream)
+        self.assertEqual(raised.exception.status, 502)
+
+
 class ParsingTests(unittest.TestCase):
     def test_sse_multiline_data_comments_and_done(self):
         lines = [b": keepalive\n", b'data: {"a":\n', b"data: 1}\n", b"\n", b"data: [DONE]\n", b"\n"]

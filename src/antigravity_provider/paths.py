@@ -24,11 +24,24 @@ def hermes_home() -> Path:
         return _legacy_hermes_home()
 
 
+def _uses_platform_default_home() -> bool:
+    """True when Hermes chose its platform default rather than a profile or HERMES_HOME."""
+    if os.getenv("HERMES_HOME", "").strip():
+        return False
+    try:
+        from hermes_constants import get_hermes_home_override
+
+        return not get_hermes_home_override()
+    except Exception:
+        return True
+
+
 def oauth_credentials_path() -> Path:
     path = hermes_home() / OAUTH_CREDENTIALS_FILE
     legacy = _legacy_hermes_home() / OAUTH_CREDENTIALS_FILE
-    # Keep using a login saved by an earlier version rather than silently dropping it.
-    if not path.exists() and legacy != path and legacy.exists():
+    # Before 0.3.0 a login on e.g. Windows was saved under ~/.hermes instead of Hermes' platform
+    # default. Keep using it, but never for a profile: that file belongs to the default profile.
+    if not path.exists() and legacy != path and legacy.exists() and _uses_platform_default_home():
         return legacy
     return path
 

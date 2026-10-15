@@ -32,6 +32,10 @@ class ChatRequest:
     top_p: float | None = None
 
 
+def _is_int(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
 def _number(value: Any) -> float | None:
     return value if isinstance(value, (int, float)) and not isinstance(value, bool) else None
 
@@ -52,7 +56,7 @@ def parse_chat_request(payload: dict[str, Any]) -> ChatRequest:
         if isinstance(extra_reasoning, dict):
             reasoning = extra_reasoning.get("effort")
     max_tokens = payload.get("max_tokens")
-    if not isinstance(max_tokens, int):
+    if not _is_int(max_tokens):
         max_tokens = payload.get("max_completion_tokens")
     return ChatRequest(
         model=normalize_model_id(str(payload.get("model") or "")),
@@ -60,7 +64,7 @@ def parse_chat_request(payload: dict[str, Any]) -> ChatRequest:
         tools=payload.get("tools") if isinstance(payload.get("tools"), list) else [],
         tool_choice=payload.get("tool_choice"),
         reasoning_effort=str(reasoning) if reasoning is not None else None,
-        max_tokens=max_tokens if isinstance(max_tokens, int) else None,
+        max_tokens=max_tokens if _is_int(max_tokens) else None,
         temperature=_number(payload.get("temperature")),
         top_p=_number(payload.get("top_p")),
     )
@@ -131,6 +135,12 @@ def _requires_thought_signature(wire_model: str) -> bool:
     return wire_model.startswith(("gemini-3", "gemini-pro"))
 
 
+def _accepts_thought_signature(wire_model: str) -> bool:
+    # Signatures are issued by Gemini; a conversation switched to Claude or gpt-oss must not
+    # replay them.
+    return wire_model.startswith("gemini")
+
+
 def _model_parts(message: dict[str, Any], wire_model: str, call_names: dict[str, str]) -> list[dict[str, Any]]:
     parts = _parts_from_content(message.get("content"))
     calls: list[tuple[dict[str, Any], str | None]] = []
@@ -146,6 +156,8 @@ def _model_parts(message: dict[str, Any], wire_model: str, call_names: dict[str,
         part = {"functionCall": {"name": name, "args": _parse_args(fn.get("arguments"))}}
         calls.append((part, thought_signature(tool_call)))
 
+    if not _accepts_thought_signature(wire_model):
+        calls = [(part, None) for part, _ in calls]
     has_real_signature = any(signature for _, signature in calls)
     for part, signature in calls:
         if signature:

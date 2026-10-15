@@ -185,6 +185,14 @@ class RequestTests(unittest.TestCase):
         self.assertEqual(parts[0]["thoughtSignature"], "SIG")
         self.assertNotIn("thoughtSignature", parts[1])
 
+    def test_real_signature_is_not_sent_to_non_gemini_route(self):
+        body = self._tool_history("claude-sonnet-4-6", {"google": {"thought_signature": "REAL"}})
+        self.assertNotIn("thoughtSignature", body["request"]["contents"][1]["parts"][0])
+
+    def test_boolean_max_tokens_is_ignored(self):
+        request = parse_chat_request({"model": "m", "messages": [], "max_tokens": True})
+        self.assertIsNone(request.max_tokens)
+
     def test_unsupported_tool_schema_is_a_client_error_naming_the_tool(self):
         tools = [{"type": "function", "function": {"name": "bad", "parameters": {"$ref": "https://x/schema"}}}]
         with self.assertRaises(AntigravityError) as raised:

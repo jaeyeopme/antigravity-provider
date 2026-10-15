@@ -43,6 +43,14 @@ class TokenTests(unittest.TestCase):
             )
 
 
+    def test_user_email_lookup_failure_never_breaks_login(self):
+        def reset(*args, **kwargs):
+            raise ConnectionResetError("reset")
+
+        with patch("antigravity_provider.net.urllib.request.urlopen", reset):
+            self.assertIsNone(oauth.fetch_user_email("tok"))
+
+
 class LoginUrlTests(unittest.TestCase):
     def test_auth_url_uses_loopback_callback(self):
         url, verifier = oauth.build_auth_url("state-1")

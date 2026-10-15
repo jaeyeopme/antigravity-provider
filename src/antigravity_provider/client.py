@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import http.client
 import json
 import urllib.error
 import urllib.request
@@ -121,7 +122,7 @@ class AntigravityClient:
                 )
                 if exc.code not in RETRYABLE_ENDPOINT_STATUSES:
                     raise last_error from exc
-            except (urllib.error.URLError, TimeoutError, OSError, ValueError) as exc:
+            except (OSError, http.client.HTTPException, ValueError) as exc:
                 if emitted:
                     raise AntigravityError(f"Cloud Code Assist stream failed: {exc}", status=502) from exc
                 last_error = AntigravityError(f"Cloud Code Assist connection failed: {exc}", status=502)
@@ -133,6 +134,7 @@ class AntigravityClient:
         headers = self._headers(access_token, "application/json")
         payloads: list[dict[str, Any]] = []
         last_error: AntigravityError | None = None
+        token_expired = False
         for endpoint in self.endpoints:
             request = urllib.request.Request(endpoint + MODELS_PATH, data=body, headers=headers, method="POST")
             try:
@@ -142,13 +144,12 @@ class AntigravityClient:
                     payloads.append(data)
             except urllib.error.HTTPError as exc:
                 detail = http_error_detail(exc)
-                last_error = (
-                    TokenExpired()
-                    if exc.code == 401
-                    else AntigravityError(f"Cloud Code Assist API error ({exc.code}): {detail}", status=exc.code)
-                )
-            except (urllib.error.URLError, TimeoutError, OSError, ValueError) as exc:
+                token_expired = token_expired or exc.code == 401
+                last_error = AntigravityError(f"Cloud Code Assist API error ({exc.code}): {detail}", status=exc.code)
+            except (OSError, http.client.HTTPException, ValueError) as exc:
                 last_error = AntigravityError(f"Cloud Code Assist model discovery failed: {exc}", status=502)
         if not payloads:
+            if token_expired:
+                raise TokenExpired()  # another endpoint's unrelated failure must not hide it
             raise last_error or AntigravityError("Antigravity model discovery returned no response", status=502)
         return _merge_model_catalogs(payloads)

@@ -75,13 +75,17 @@ class CredentialManager:
             store = self.store()
             latest = store.load()
             # Another Hermes process may already have refreshed and saved a newer token.
-            if latest is not None and latest.access_token and latest.access_token != rejected.access_token:
+            if latest is None:
+                return self.current()  # logged out or switched to Keychain meanwhile; don't re-save
+            if latest.access_token and latest.access_token != rejected.access_token:
                 return latest
-            base = latest or rejected
-            refreshed = base.with_tokens(self._refresh_tokens(base.refresh_token))
+            refreshed = latest.with_tokens(self._refresh_tokens(latest.refresh_token))
             store.save(refreshed)
             return refreshed
         with self._lock:
+            cached = self._keychain
+            if cached is not None and cached.access_token and cached.access_token != rejected.access_token:
+                return cached  # another request already refreshed it
             refreshed = rejected.with_tokens(self._refresh_tokens(rejected.refresh_token))
             self._keychain = refreshed
             return refreshed
