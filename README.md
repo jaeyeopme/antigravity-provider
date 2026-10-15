@@ -171,16 +171,17 @@ upgrades.
 `hermes plugins install` and `update` take the latest commit on `main`, so a
 merge to `main` is a release. The repository is kept that way:
 
-- **Code** is whatever Hermes installs and runs: `src/`, `__init__.py`, `plugin.yaml`. Code
-  changes go through one pull request per batch of work, one commit per change,
-  squash-merged once CI passes.
+- **Code** is anything that changes how the plugin behaves: `src/` and the root
+  `__init__.py`. Code changes go through one pull request per batch of work, one
+  commit per change, squash-merged once CI passes.
 - **Every code pull request bumps the version** and adds its section to
   `CHANGELOG.md` in the same pull request. Patch (`0.3.3` → `0.3.4`) for fixes
   and internal changes; minor (`0.3.x` → `0.4.0`) when users get something new
   or have to act (a new command or option, a removed feature, a config change,
   signing in again). The version lives in `src/antigravity_provider/__init__.py`
   and `plugin.yaml`; a test keeps them and the changelog in step.
-- **Docs, tests, scripts and CI** go straight to `main`, without a version bump
+- **Everything else** (docs, tests, scripts, CI, descriptive metadata such as
+  the `plugin.yaml` description) goes straight to `main`, without a version bump
   or changelog entry.
 - No tags or GitHub releases: Hermes does not use them.
 
