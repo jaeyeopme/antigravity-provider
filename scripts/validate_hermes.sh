@@ -11,6 +11,9 @@ if command -v hermes >/dev/null 2>&1 && command -v git >/dev/null 2>&1; then
   home="$tmp/home"
   export SRC_ROOT="$(pwd)"
   export TEST_REPO="$repo"
+  # A HERMES_HOME outside ~/.hermes makes Hermes build its runtime under it and
+  # repoint the user's shared launchers there; pin the user's own runtime instead.
+  export HERMES_RUNTIME_DIR="${HERMES_RUNTIME_DIR:-$HOME/.hermes/tools}"
   python - <<'PY'
 import os
 import shutil
