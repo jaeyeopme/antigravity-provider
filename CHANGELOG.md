@@ -1,5 +1,7 @@
 # Changelog
 
+Each version is the date its code reached `main` (`YYYY.M.D`). Versions up to 0.3.3 used semantic version numbers.
+
 ## 0.3.3 - 2026-10-15
 
 - Pick the model for Hermes side tasks (titles, compression, ...) from the account's catalog: the backend's cheap pick (`gemini-3.5-flash-lite`) when listed, else the account default. The fixed `gemini-3.1-pro` returned 404 on accounts without it.
