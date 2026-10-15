@@ -24,7 +24,10 @@ SAFE_TOOLS = ("todo", "session_search", "skills_list")
 os.environ["HERMES_HOME"] = tempfile.mkdtemp(prefix="antigravity-e2e-")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
+RETIRED = "Gemini 3.5 Flash is no longer available. Please switch to Gemini 3.7 Flash."
+
 generate_requests: list[dict] = []
+retired_requests: list[dict] = []
 
 
 def sse(events: list[dict]) -> bytes:
@@ -47,13 +50,17 @@ class FakeAntigravity(BaseHTTPRequestHandler):
         if "fetchAvailableModels" in self.path:
             models = {
                 "gemini-3.1-pro-low": {"maxOutputTokens": 8192, "supportsThinking": True, "thinkingBudget": 1001},
-                "gemini-3.5-flash-lite": {},
+                "gemini-3.5-flash-low": {}, "gemini-3.5-flash-lite": {},
             }
             catalog = {"models": models, "commitMessageModelIds": ["gemini-3.5-flash-lite"]}
             self._send("application/json", json.dumps(catalog).encode())
             return
         if "streamGenerateContent" not in self.path:
             self.send_error(404)
+            return
+        if body["model"] == "gemini-3.5-flash-low":  # retired: the backend sends only a notice
+            retired_requests.append(body)
+            self._send("text/event-stream", sse([{"candidates": [{"content": {"parts": [{"text": RETIRED}]}}]}]))
             return
         generate_requests.append(body)
         request = body["request"]
@@ -110,6 +117,8 @@ def main() -> int:
         "one Antigravity session": len({r["request"]["sessionId"] for r in generate_requests}) == 1,
         "aux model is the catalog's cheap pick": _get_aux_model_for_provider("antigravity")
         == "google-antigravity/gemini-3.5-flash-lite",
+        "retired model notice reaches the user": new_agent("google-antigravity/gemini-3.5-flash").chat("hi") == RETIRED,
+        "retired model notice is not continued": len(retired_requests) == 1,
     }
     for name, passed in checks.items():
         print(f"{'ok  ' if passed else 'FAIL'} {name}")
