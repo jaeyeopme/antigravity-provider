@@ -1,9 +1,12 @@
+import os
 import tempfile
+import threading
 import time
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
-from antigravity_provider.catalog import CatalogManager, build_catalog
+from antigravity_provider.catalog import CatalogManager, build_catalog, fallback_catalog
 
 
 CATALOG_PAYLOAD = {
@@ -53,6 +56,19 @@ CATALOG_PAYLOAD = {
     "tieredModelIds": {"flash": ["gemini-3.8-flash-tiered"]},
     "defaultAgentModelId": "gemini-3.9-flash-high",
 }
+
+
+class Fetch:
+    def __init__(self, payload=None, error=None):
+        self.payload = payload
+        self.error = error
+        self.calls = 0
+
+    def __call__(self):
+        self.calls += 1
+        if self.error is not None:
+            raise self.error
+        return self.payload
 
 
 class CatalogTests(unittest.TestCase):
@@ -138,59 +154,97 @@ class CatalogTests(unittest.TestCase):
         self.assertEqual(route.model_enum, "MODEL_HIGH")
 
     def test_expired_last_known_good_survives_refresh_failure(self):
-        class Client:
-            def __init__(self):
-                self.fail = False
-
-            def fetch_available_models(self, *, access_token, project_id):
-                if self.fail:
-                    raise RuntimeError("offline")
-                return CATALOG_PAYLOAD
-
         with tempfile.TemporaryDirectory() as directory:
             now = [1000.0]
-            client = Client()
-            manager = CatalogManager(
-                path=Path(directory) / "catalog.json",
-                ttl_seconds=10,
-                clock=lambda: now[0],
-            )
-            first = manager.get(client=client, access_token="token", project_id="project")
+            fetch = Fetch(CATALOG_PAYLOAD)
+            manager = CatalogManager(path=Path(directory) / "catalog.json", ttl_seconds=10, clock=lambda: now[0])
+            first = manager.get(project_id="project", fetch=fetch)
             self.assertIn("google-antigravity/gemini-3.9-flash", first.model_ids())
             now[0] += 20
-            client.fail = True
-            second = manager.get(client=client, access_token="token", project_id="project")
+            fetch.error = RuntimeError("offline")
+            second = manager.get(project_id="project", fetch=fetch)
             self.assertEqual(second.model_ids(), first.model_ids())
 
     def test_empty_refresh_does_not_replace_last_known_good(self):
-        class Client:
-            payload = CATALOG_PAYLOAD
-
-            def fetch_available_models(self, *, access_token, project_id):
-                return self.payload
-
         with tempfile.TemporaryDirectory() as directory:
-            client = Client()
+            fetch = Fetch(CATALOG_PAYLOAD)
             manager = CatalogManager(path=Path(directory) / "catalog.json", ttl_seconds=0)
-            first = manager.get(client=client, access_token="token", project_id="project")
-            client.payload = {"models": {}}
-            second = manager.get(client=client, access_token="token", project_id="project", force=True)
+            first = manager.get(project_id="project", fetch=fetch)
+            fetch.payload = {"models": {}}
+            second = manager.get(project_id="project", fetch=fetch, force=True)
             self.assertEqual(second.model_ids(), first.model_ids())
 
     def test_cache_write_failure_does_not_discard_live_catalog(self):
-        class Client:
-            def fetch_available_models(self, *, access_token, project_id):
-                return CATALOG_PAYLOAD
-
         class ReadOnlyCatalogManager(CatalogManager):
             def _save(self, project_key, checked_at, payload):
                 raise OSError("read-only cache")
 
         with tempfile.TemporaryDirectory() as directory:
             manager = ReadOnlyCatalogManager(path=Path(directory) / "catalog.json")
-            catalog = manager.get(client=Client(), access_token="token", project_id="project")
+            catalog = manager.get(project_id="project", fetch=Fetch(CATALOG_PAYLOAD))
         self.assertIn("google-antigravity/gemini-3.9-flash", catalog.model_ids())
 
+    def test_disk_cache_is_reused_by_a_new_process(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "catalog.json"
+            CatalogManager(path=path).get(project_id="project", fetch=Fetch(CATALOG_PAYLOAD))
+            fetch = Fetch(CATALOG_PAYLOAD)
+            catalog = CatalogManager(path=path).get(project_id="project", fetch=fetch)
+            self.assertEqual(fetch.calls, 0)
+            self.assertIn("google-antigravity/gemini-3.9-flash", catalog.model_ids())
+            other = Fetch(CATALOG_PAYLOAD)
+            CatalogManager(path=path).get(project_id="other-project", fetch=other)
+            self.assertEqual(other.calls, 1)
+
+    def test_failed_discovery_backs_off_instead_of_retrying_every_request(self):
+        with tempfile.TemporaryDirectory() as directory:
+            now = [1000.0]
+            fetch = Fetch(error=RuntimeError("down"))
+            manager = CatalogManager(path=Path(directory) / "catalog.json", retry_seconds=300, clock=lambda: now[0])
+            for _ in range(5):
+                catalog = manager.get(project_id="project", fetch=fetch)
+            self.assertEqual(fetch.calls, 1)
+            self.assertEqual(catalog.model_ids(), fallback_catalog().model_ids())
+            now[0] += 301
+            fetch.error, fetch.payload = None, CATALOG_PAYLOAD
+            catalog = manager.get(project_id="project", fetch=fetch)
+            self.assertEqual(fetch.calls, 2)
+            self.assertIn("google-antigravity/gemini-3.9-flash", catalog.model_ids())
+
+    def test_stale_catalog_is_served_while_another_thread_refreshes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            now = [1000.0]
+            manager = CatalogManager(path=Path(directory) / "catalog.json", ttl_seconds=10, clock=lambda: now[0])
+            stale = manager.get(project_id="project", fetch=Fetch(CATALOG_PAYLOAD))
+            now[0] += 20
+            started, release = threading.Event(), threading.Event()
+
+            def slow_fetch():
+                started.set()
+                release.wait(5)
+                return CATALOG_PAYLOAD
+
+            worker = threading.Thread(target=manager.get, kwargs={"project_id": "project", "fetch": slow_fetch})
+            worker.start()
+            started.wait(5)
+            began = time.monotonic()
+            fetch = Fetch(CATALOG_PAYLOAD)
+            served = manager.get(project_id="project", fetch=fetch)
+            self.assertLess(time.monotonic() - began, 1)
+            self.assertEqual(fetch.calls, 0)
+            self.assertEqual(served.model_ids(), stale.model_ids())
+            release.set()
+            worker.join(5)
+
+    def test_cache_path_follows_hermes_home_at_call_time(self):
+        with tempfile.TemporaryDirectory() as first, tempfile.TemporaryDirectory() as second:
+            with patch.dict(os.environ, {"HERMES_HOME": first}):
+                manager = CatalogManager()
+                manager.get(project_id="project", fetch=Fetch(CATALOG_PAYLOAD))
+            with patch.dict(os.environ, {"HERMES_HOME": second}):
+                manager.get(project_id="other", fetch=Fetch(CATALOG_PAYLOAD))
+            self.assertTrue((Path(first) / ".antigravity_models.json").exists())
+            self.assertTrue((Path(second) / ".antigravity_models.json").exists())
 
 if __name__ == "__main__":
     unittest.main()
