@@ -112,7 +112,16 @@ def to_gemini_schema(schema: Any) -> dict[str, Any]:
                 value = {key: nested for key, nested in value.items() if key != "type"}
                 if len(non_null_types) == 1:
                     value["type"] = non_null_types[0]
-            return {key: clean(nested, resolving) for key, nested in value.items() if key not in banned}
+            cleaned_value: dict[str, Any] = {}
+            for key, nested in value.items():
+                if key in banned:
+                    continue
+                if key == "properties" and isinstance(nested, dict):
+                    # Keys here are parameter names, not schema keywords: keep them all.
+                    cleaned_value[key] = {name: clean(prop, resolving) for name, prop in nested.items()}
+                else:
+                    cleaned_value[key] = clean(nested, resolving)
+            return cleaned_value
         if isinstance(value, list):
             return [clean(nested, resolving) for nested in value]
         return value
