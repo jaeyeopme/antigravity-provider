@@ -10,7 +10,8 @@ from typing import Any
 from . import __version__
 from .hermes_provider import PLACEHOLDER_API_KEY, PLACEHOLDER_API_KEY_ENV, PROVIDER_BASE_URL, PROVIDER_NAME, register_provider_profile
 from .credentials import SOURCE_KEYCHAIN
-from .models import DEFAULT_MODEL
+from .catalog import fallback_catalog
+from .models import normalize_model_id, strip_provider_prefix
 from .paths import hermes_home
 from .service import default_service
 
@@ -86,11 +87,19 @@ def _select_model(model_id: str | None) -> None:
         from hermes_cli.config import load_config, save_config
     except Exception as exc:
         raise SystemExit(f"Hermes config helpers are not available: {exc}") from exc
+    try:
+        catalog = default_service().catalog()
+    except Exception:
+        catalog = fallback_catalog()
+    # The built-in list stands in when discovery fails; it is not this account's list.
+    listed = catalog.model_ids() if catalog is not fallback_catalog() else None
     if not model_id:
-        try:
-            model_id = default_service().catalog().default_model
-        except Exception:
-            model_id = DEFAULT_MODEL
+        if listed is None:
+            raise SystemExit("Could not load your Antigravity models. Run `hermes agy login`, or pass a model ID.")
+        model_id = catalog.default_model
+    elif listed is not None and normalize_model_id(model_id) not in listed:
+        names = ", ".join(strip_provider_prefix(model) for model in listed)
+        raise SystemExit(f"Your Antigravity account does not list {model_id}. Available: {names}")
     config = load_config()
     model_cfg = config.get("model")
     if not isinstance(model_cfg, dict):

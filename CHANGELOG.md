@@ -2,6 +2,10 @@
 
 Each version is the date its code reached `main` (`YYYY.M.D`), with `.1`, `.2`, ... for later merges the same day.
 
+## 2026.10.16
+
+- `hermes agy select` refuses a model your account does not list and shows the ones it does. Before, it saved the name anyway and every request failed with 404; without a model and with model discovery failing, it saved `gemini-3.1-pro`.
+
 ## 2026.10.15.3
 
 - Pick the model for Hermes side tasks (titles, compression, ...) from the account's catalog: the backend's cheap pick (`gemini-3.5-flash-lite`) when listed, else the account default. The fixed `gemini-3.1-pro` returned 404 on accounts without it.
