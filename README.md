@@ -175,7 +175,8 @@ merge to `main` is a release. The repository is kept that way:
   `__init__.py`. Code changes go through one pull request per batch of work, one
   commit per change, squash-merged once CI passes.
 - **Every code pull request bumps the version** and adds its section to
-  `CHANGELOG.md` in the same pull request. Patch (`0.3.3` → `0.3.4`) for fixes
+  `CHANGELOG.md` in the same pull request, headed `## X.Y.Z - YYYY-MM-DD` with
+  the merge date. Patch (`0.3.3` → `0.3.4`) for fixes
   and internal changes; minor (`0.3.x` → `0.4.0`) when users get something new
   or have to act (a new command or option, a removed feature, a config change,
   signing in again). The version lives in `src/antigravity_provider/__init__.py`
