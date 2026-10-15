@@ -1,5 +1,5 @@
 manifest_version: 1
 name: antigravity-provider
-version: 2026.10.15.3
+version: 2026.10.16
 kind: standalone
 description: "Unofficial Hermes Agent provider for Google Antigravity: use your account's Gemini, Claude, and gpt-oss models with no API key or proxy."

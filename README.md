@@ -39,8 +39,9 @@ To use a browser sign-in even when `agy` is available, run
 again switches back to `agy` and removes the saved browser sign-in.
 
 `hermes agy select` makes Antigravity the default Hermes provider with your
-account's default model. Pass a model ID to choose another one, for example
-`hermes agy select gemini-3-flash`. Restart running Hermes sessions afterwards.
+account's default model. Pass a model ID your account lists to choose another
+one, for example `hermes agy select gemini-3-flash`. Restart running Hermes
+sessions afterwards.
 
 **Signing in on a remote machine:** the browser redirect goes to
 `127.0.0.1:51121` on the machine running Hermes. Forward that port, then open
