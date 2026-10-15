@@ -30,6 +30,16 @@ def register_provider_profile() -> bool:
         return False
 
     class AntigravityProfile(ProviderProfile):
+        @property
+        def default_aux_model(self) -> str:
+            # Hermes reads this for side tasks. A constant rots when a model is retired, so answer
+            # from the account's last catalog (no network).
+            return catalog_manager.current().aux_model
+
+        @default_aux_model.setter
+        def default_aux_model(self, value: str) -> None:
+            pass  # assigned by the dataclass __init__; the live catalog decides
+
         def create_client(self, **client_kwargs: Any) -> Any:
             from .hermes_client import HermesAntigravityClient
 
@@ -69,7 +79,6 @@ def register_provider_profile() -> bool:
             supports_health_check=False,
             supports_vision=True,
             fallback_models=fallback_models,
-            default_aux_model=DEFAULT_MODEL,
             fixed_temperature=OMIT_TEMPERATURE,
         )
     )

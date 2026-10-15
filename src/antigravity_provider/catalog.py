@@ -67,6 +67,7 @@ class ModelCatalog:
     runtime_routes: dict[str, RouteSpec]
     runtime_to_public: dict[str, str]
     default_model: str = DEFAULT_MODEL
+    aux_model: str = DEFAULT_MODEL
     fallback_groups: dict[str, _ModelGroup] = field(default_factory=dict)
 
     def model_ids(self) -> list[str]:
@@ -252,11 +253,16 @@ def build_catalog(payload: dict[str, Any], fallback: ModelCatalog | None = None)
     raw_default = payload.get("defaultAgentModelId") or payload.get("defaultAgentModel")
     default_public = runtime_to_public.get(str(raw_default), str(raw_default)) if raw_default else ""
     default_model = normalize_model_id(default_public) if default_public in groups else DEFAULT_MODEL
+    # The backend's own cheap pick for side tasks, if this account lists it.
+    tiered = payload.get("tieredModelIds") if isinstance(payload.get("tieredModelIds"), dict) else {}
+    cheap = [*(payload.get("commitMessageModelIds") or []), *(tiered.get("flashLite") or [])]
+    aux_public = next((runtime_to_public[m] for m in cheap if m in runtime_to_public), "")
     return ModelCatalog(
         groups=groups,
         runtime_routes={**(fallback.runtime_routes if fallback else {}), **runtime_routes},
         runtime_to_public={**(fallback.runtime_to_public if fallback else {}), **runtime_to_public},
         default_model=default_model,
+        aux_model=normalize_model_id(aux_public) if aux_public else default_model,
         fallback_groups=(fallback.groups if fallback else {}),
     )
 

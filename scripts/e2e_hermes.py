@@ -45,8 +45,12 @@ class FakeAntigravity(BaseHTTPRequestHandler):
     def do_POST(self) -> None:  # noqa: N802
         body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
         if "fetchAvailableModels" in self.path:
-            models = {"gemini-3.1-pro-low": {"maxOutputTokens": 8192, "supportsThinking": True, "thinkingBudget": 1001}}
-            self._send("application/json", json.dumps({"models": models}).encode())
+            models = {
+                "gemini-3.1-pro-low": {"maxOutputTokens": 8192, "supportsThinking": True, "thinkingBudget": 1001},
+                "gemini-3.5-flash-lite": {},
+            }
+            catalog = {"models": models, "commitMessageModelIds": ["gemini-3.5-flash-lite"]}
+            self._send("application/json", json.dumps(catalog).encode())
             return
         if "streamGenerateContent" not in self.path:
             self.send_error(404)
@@ -85,13 +89,16 @@ def main() -> int:
         print("FAIL: Hermes provider registry is not importable")
         return 1
 
+    from agent.auxiliary_client import _get_aux_model_for_provider
     from run_agent import AIAgent
 
-    agent = AIAgent(
-        provider="antigravity", model="google-antigravity/gemini-3.1-pro", api_key="hermes-plugin", base_url=PROVIDER_BASE_URL,
-        api_mode="chat_completions", quiet_mode=True, skip_memory=True, skip_context_files=True, max_iterations=4,
-    )
-    reply = agent.chat("please use a tool")
+    def new_agent(model: str) -> AIAgent:
+        return AIAgent(
+            provider="antigravity", model=model, api_key="hermes-plugin", base_url=PROVIDER_BASE_URL,
+            api_mode="chat_completions", quiet_mode=True, skip_memory=True, skip_context_files=True, max_iterations=4,
+        )
+
+    reply = new_agent("google-antigravity/gemini-3.1-pro").chat("please use a tool")
     replayed = [
         part for content in generate_requests[-1]["request"]["contents"]
         for part in content["parts"] if "functionCall" in part
@@ -101,6 +108,8 @@ def main() -> int:
         "tool round trip took two requests": len(generate_requests) == 2,
         "thought signature replayed": bool(replayed) and replayed[0].get("thoughtSignature") == SIGNATURE,
         "one Antigravity session": len({r["request"]["sessionId"] for r in generate_requests}) == 1,
+        "aux model is the catalog's cheap pick": _get_aux_model_for_provider("antigravity")
+        == "google-antigravity/gemini-3.5-flash-lite",
     }
     for name, passed in checks.items():
         print(f"{'ok  ' if passed else 'FAIL'} {name}")
