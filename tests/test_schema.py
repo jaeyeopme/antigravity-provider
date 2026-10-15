@@ -14,6 +14,16 @@ class SchemaTests(unittest.TestCase):
         self.assertNotIn("$ref", out["properties"]["item"])
         self.assertNotIn("$defs", out)
 
+    def test_keeps_parameters_named_like_schema_keywords(self):
+        names = ["definitions", "additionalProperties", "$schema", "anyOf", "oneOf", "$ref"]
+        out = to_gemini_schema({
+            "type": "object",
+            "properties": {name: {"type": "string"} for name in names},
+            "required": names,
+        })
+        self.assertEqual(out["properties"], {name: {"type": "string"} for name in names})
+        self.assertEqual(out["required"], names)
+
     def test_collapses_nullable_union(self):
         self.assertEqual(to_gemini_schema({"anyOf": [{"type": "string"}, {"type": "null"}]}), {"type": "string"})
 
