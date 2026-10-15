@@ -39,6 +39,13 @@ def _failed_tool_call(reason: str | None) -> AntigravityError:
     return AntigravityError(f"Antigravity model ended the turn with {reason}", status=502)
 
 
+def _empty_stream(saw_part: bool, finish: str | None) -> AntigravityError | None:
+    """A turn with no output is a retryable provider error, not an empty reply."""
+    if not saw_part and finish in (None, "STOP"):
+        return AntigravityError("Antigravity returned an empty stream", status=502)
+    return None
+
+
 def _usage(response: dict[str, Any]) -> dict[str, int]:
     usage = response.get("usageMetadata") or {}
     prompt = int(usage.get("promptTokenCount") or 0)
@@ -71,18 +78,19 @@ def collect_response(chunks: Iterable[dict[str, Any]]) -> dict[str, Any]:
     finish: str | None = None
     usage: dict[str, Any] = {}
     response_id: str | None = None
-    saw_chunk = False
     for chunk in chunks:
-        saw_chunk = True
         response_id = chunk.get("responseId") or response_id
         usage = chunk.get("usageMetadata") or usage
         candidate = _candidate(chunk)
         parts.extend(_parts(candidate))
         finish = candidate.get("finishReason") or finish
-    if not saw_chunk or (not parts and finish in (None, "STOP")):
-        raise AntigravityError("Antigravity returned an empty stream", status=502)
+    error = _empty_stream(bool(parts), finish)
+    if error is not None:
+        raise error
+    if finish is None:
+        raise AntigravityError("Antigravity stream ended without a finish reason", status=502)
     response: dict[str, Any] = {
-        "candidates": [{"content": {"role": "model", "parts": parts}, "finishReason": finish or "STOP"}],
+        "candidates": [{"content": {"role": "model", "parts": parts}, "finishReason": finish}],
         "usageMetadata": usage,
     }
     if response_id:
@@ -132,6 +140,9 @@ def to_openai_stream_chunks(model: str, events: Iterable[dict[str, Any]]) -> Ite
     public_model = normalize_model_id(model)
     tool_index = 0
     produced_output = False
+    saw_part = False
+    finish: str | None = None
+    usage: dict[str, int] | None = None
 
     def chunk(delta: dict[str, Any], finish_reason: str | None = None, usage: dict[str, int] | None = None) -> dict[str, Any]:
         value: dict[str, Any] = {
@@ -148,6 +159,7 @@ def to_openai_stream_chunks(model: str, events: Iterable[dict[str, Any]]) -> Ite
     for event in events:
         candidate = _candidate(event)
         for part in _parts(candidate):
+            saw_part = True
             if "functionCall" in part:
                 yield chunk({"tool_calls": [{"index": tool_index, **_tool_call(part)}]})
                 tool_index += 1
@@ -159,9 +171,17 @@ def to_openai_stream_chunks(model: str, events: Iterable[dict[str, Any]]) -> Ite
                     yield chunk({"content": part["text"]})
                     produced_output = True
 
+        if event.get("usageMetadata"):
+            usage = _usage(event)  # may arrive in its own event after the finish reason
         reason = candidate.get("finishReason")
         if reason:
             if reason in _FAILED_TOOL_CALL_REASONS and not produced_output:
                 raise _failed_tool_call(reason)
-            usage = _usage(event) if event.get("usageMetadata") else None
-            yield chunk({}, "tool_calls" if tool_index else _finish_reason(reason), usage)
+            finish = reason
+
+    error = _empty_stream(saw_part, finish)
+    if error is not None:
+        raise error
+    if finish is None:
+        return  # cut off: without a finish_reason Hermes requests a continuation
+    yield chunk({}, "tool_calls" if tool_index else _finish_reason(finish), usage)

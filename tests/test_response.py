@@ -84,6 +84,22 @@ class StreamTests(unittest.TestCase):
         chunks = list(to_openai_stream_chunks("gemini-3.1-pro", events))
         self.assertEqual(chunks[-1]["choices"][0]["finish_reason"], "stop")
 
+    def test_stream_with_finish_but_no_parts_is_an_empty_stream_error(self):
+        with self.assertRaisesRegex(AntigravityError, "empty stream"):
+            list(to_openai_stream_chunks("gemini-3.1-pro", [candidate([])]))
+
+    def test_stream_cut_off_before_finish_reason_sends_no_finish_chunk(self):
+        # Hermes keeps the partial reply and requests a continuation when finish_reason never arrives.
+        chunks = list(to_openai_stream_chunks("gemini-3.1-pro", [candidate([{"text": "hal"}], None)]))
+        self.assertEqual([c["choices"][0]["finish_reason"] for c in chunks], [None])
+
+    def test_usage_sent_after_finish_event_reaches_the_final_chunk(self):
+        events = [candidate([{"text": "hi"}]), {"usageMetadata": {"promptTokenCount": 5, "candidatesTokenCount": 2}}]
+        chunks = list(to_openai_stream_chunks("gemini-3.1-pro", events))
+        self.assertEqual(chunks[-1]["choices"][0]["finish_reason"], "stop")
+        self.assertEqual(chunks[-1]["usage"]["total_tokens"], 7)
+        self.assertEqual(sum(1 for c in chunks if c["choices"][0]["finish_reason"]), 1)
+
 
 class CollectTests(unittest.TestCase):
     def test_thought_only_response_is_kept(self):
@@ -103,6 +119,10 @@ class CollectTests(unittest.TestCase):
     def test_empty_stream_is_an_error(self):
         with self.assertRaisesRegex(AntigravityError, "empty stream"):
             collect_response(iter(()))
+
+    def test_response_without_finish_reason_is_a_truncation_error(self):
+        with self.assertRaisesRegex(AntigravityError, "finish reason"):
+            collect_response([candidate([{"text": "hal"}], None)])
 
 
 if __name__ == "__main__":

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.1
+
+- Send tool call IDs back with replayed tool calls and results; Claude and gpt-oss routes rejected the next turn after any tool call without them.
+- Keep tool parameters named like schema keywords (`definitions`, `additionalProperties`, `$ref`, `anyOf`, ...) instead of dropping them or failing the request.
+- Report a streamed reply with no output as a retryable provider error, as non-streamed replies already were.
+- Report a non-streamed reply that ends without a finish reason as a retryable provider error instead of returning the cut-off reply as complete.
+- Keep token usage when it arrives in its own event after the finish reason.
+
 ## 0.3.0
 
 - Preserve real Gemini thought signatures across turns through Hermes' tool-call `extra_content`; the skip placeholder is only used when history has none.

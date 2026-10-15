@@ -75,7 +75,7 @@ class AntigravityService:
     def stream(self, payload: dict[str, Any], *, session_id: str | None = None) -> Iterator[dict[str, Any]]:
         """OpenAI stream chunks. Request setup errors raise here, before iteration starts."""
         request, body, credentials = self.build_body(payload, session_id=session_id)
-        return _non_empty(to_openai_stream_chunks(request.model, self._upstream(body, credentials)))
+        return to_openai_stream_chunks(request.model, self._upstream(body, credentials))
 
     def _upstream(self, body: dict[str, Any], credentials: Credentials) -> Iterator[dict[str, Any]]:
         emitted = False
@@ -88,15 +88,6 @@ class AntigravityService:
                 raise
             refreshed = self.credentials.refresh(credentials)
             yield from self.client.stream_generate(access_token=refreshed.access_token, body=body)
-
-
-def _non_empty(chunks: Iterator[dict[str, Any]]) -> Iterator[dict[str, Any]]:
-    emitted = False
-    for chunk in chunks:
-        emitted = True
-        yield chunk
-    if not emitted:
-        raise AntigravityError("Antigravity returned an empty stream", status=502)
 
 
 _default_service: AntigravityService | None = None
