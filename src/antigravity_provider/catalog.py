@@ -1,18 +1,20 @@
 from __future__ import annotations
 
 import hashlib
-import json
-import os
-import tempfile
 import threading
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
 
+from .fileio import read_json, write_private_json
+from .paths import model_cache_path
 from .models import DEFAULT_MODEL, normalize_effort, normalize_model_id, strip_provider_prefix
 
 CATALOG_TTL_SECONDS = 4 * 60 * 60
+# After a failed refresh, wait this long before calling discovery again.
+CATALOG_RETRY_SECONDS = 5 * 60
+CACHE_FORMAT_VERSION = 1
 _SUFFIXES = (
     ("extra-low", "low"),
     ("extra-high", "high"),
@@ -284,108 +286,127 @@ def fallback_catalog() -> ModelCatalog:
     return _FALLBACK_CATALOG
 
 
-def _default_catalog_path() -> Path:
-    root = Path(os.getenv("HERMES_HOME") or Path.home() / ".hermes").expanduser()
-    return root / ".antigravity_models.json"
+@dataclass(frozen=True)
+class _Entry:
+    checked_at: float
+    catalog: ModelCatalog
 
 
 class CatalogManager:
+    """Account-scoped model catalog with a disk-backed last-known-good copy.
+
+    Discovery runs outside the state lock, at most once at a time per project. While a refresh is
+    in flight or backing off after a failure, callers get the last-known-good (or seed) catalog
+    instead of waiting on the network.
+    """
+
     def __init__(
         self,
         *,
-        path: Path | None = None,
+        path: Path | Callable[[], Path] = model_cache_path,
         ttl_seconds: float = CATALOG_TTL_SECONDS,
+        retry_seconds: float = CATALOG_RETRY_SECONDS,
         clock: Callable[[], float] = time.time,
     ) -> None:
-        self.path = Path(path or _default_catalog_path()).expanduser()
+        self._path = path
         self.ttl_seconds = ttl_seconds
+        self.retry_seconds = retry_seconds
         self.clock = clock
         self._lock = threading.Lock()
-        self._entries: dict[str, tuple[float, ModelCatalog, dict[str, Any]]] = {}
+        self._refreshing: dict[str, threading.Lock] = {}
+        self._entries: dict[str, _Entry] = {}
+        self._failed_at: dict[str, float] = {}
         self._current = fallback_catalog()
+
+    @property
+    def path(self) -> Path:
+        return Path(self._path() if callable(self._path) else self._path).expanduser()
 
     @staticmethod
     def _project_key(project_id: str) -> str:
         return hashlib.sha256(project_id.encode("utf-8")).hexdigest()
 
     def current(self) -> ModelCatalog:
+        """The most recently used catalog; never touches the network (for hot paths)."""
         return self._current
 
-    def _load(self, project_key: str) -> tuple[float, ModelCatalog, dict[str, Any]] | None:
-        try:
-            data = json.loads(self.path.read_text(encoding="utf-8"))
-        except (FileNotFoundError, OSError, ValueError):
-            return None
+    def _load(self, project_key: str) -> _Entry | None:
+        data = read_json(self.path)
         if not isinstance(data, dict):
             return None
-        payload = data.get("payload")
-        checked_at = data.get("checked_at")
-        if data.get("version") != 1 or data.get("project") != project_key:
+        if data.get("version") != CACHE_FORMAT_VERSION or data.get("project") != project_key:
             return None
+        payload, checked_at = data.get("payload"), data.get("checked_at")
         if not isinstance(payload, dict) or not isinstance(checked_at, (int, float)):
             return None
         catalog = build_catalog(payload, fallback_catalog())
-        if not catalog.groups:
-            return None
-        return float(checked_at), catalog, payload
+        return _Entry(float(checked_at), catalog) if catalog.groups else None
 
     def _save(self, project_key: str, checked_at: float, payload: dict[str, Any]) -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            os.chmod(self.path.parent, 0o700)
-        except OSError:
-            pass
-        fd, temporary = tempfile.mkstemp(prefix=f".{self.path.name}.", dir=str(self.path.parent), text=True)
-        try:
-            with os.fdopen(fd, "w", encoding="utf-8") as handle:
-                json.dump({"version": 1, "project": project_key, "checked_at": checked_at, "payload": payload}, handle, sort_keys=True)
-                handle.write("\n")
-            os.chmod(temporary, 0o600)
-            os.replace(temporary, self.path)
-            os.chmod(self.path, 0o600)
-        finally:
-            if os.path.exists(temporary):
-                os.unlink(temporary)
+        write_private_json(
+            self.path,
+            {"version": CACHE_FORMAT_VERSION, "project": project_key, "checked_at": checked_at, "payload": payload},
+        )
+
+    def _cached(self, project_key: str) -> _Entry | None:
+        entry = self._entries.get(project_key)
+        if entry is None:
+            entry = self._load(project_key)
+            if entry is not None:
+                self._entries[project_key] = entry
+        return entry
+
+    def _use(self, catalog: ModelCatalog) -> ModelCatalog:
+        self._current = catalog
+        return catalog
 
     def get(
         self,
         *,
-        client: Any,
-        access_token: str,
         project_id: str,
+        fetch: Callable[[], dict[str, Any]],
         force: bool = False,
     ) -> ModelCatalog:
-        project_key = self._project_key(project_id)
+        """Return the catalog for ``project_id``, calling ``fetch`` for a fresh payload when stale."""
+        key = self._project_key(project_id)
         with self._lock:
-            entry = self._entries.get(project_key)
-            if entry is None:
-                entry = self._load(project_key)
-                if entry is not None:
-                    self._entries[project_key] = entry
+            entry = self._cached(key)
             now = self.clock()
-            if entry is not None and not force and now - entry[0] < self.ttl_seconds:
-                self._current = entry[1]
-                return entry[1]
+            if not force:
+                if entry is not None and now - entry.checked_at < self.ttl_seconds:
+                    return self._use(entry.catalog)
+                failed_at = self._failed_at.get(key)
+                if failed_at is not None and now - failed_at < self.retry_seconds:
+                    return self._use(entry.catalog if entry else fallback_catalog())
+            refresh_lock = self._refreshing.setdefault(key, threading.Lock())
+
+        if not refresh_lock.acquire(blocking=entry is None):
+            return self._use(entry.catalog)  # someone else is refreshing; serve the stale copy
+        try:
+            with self._lock:
+                latest = self._entries.get(key)
+                if latest is not None and latest is not entry and not force:
+                    return self._use(latest.catalog)  # refreshed while we waited
             try:
-                payload = client.fetch_available_models(access_token=access_token, project_id=project_id)
+                payload = fetch()
                 catalog = build_catalog(payload, fallback_catalog())
                 if not catalog.groups:
                     raise ValueError("empty Antigravity model catalog")
             except Exception:
-                if entry is not None:
-                    self._current = entry[1]
-                    return entry[1]
-                self._current = fallback_catalog()
-                return self._current
+                with self._lock:
+                    self._failed_at[key] = self.clock()
+                    return self._use(entry.catalog if entry else fallback_catalog())
             checked_at = self.clock()
-            saved = (checked_at, catalog, payload)
-            self._entries[project_key] = saved
-            self._current = catalog
+            with self._lock:
+                self._entries[key] = _Entry(checked_at, catalog)
+                self._failed_at.pop(key, None)
             try:
-                self._save(project_key, checked_at, payload)
+                self._save(key, checked_at, payload)
             except OSError:
-                pass
-            return catalog
+                pass  # the in-memory catalog is still usable
+            return self._use(catalog)
+        finally:
+            refresh_lock.release()
 
 
 catalog_manager = CatalogManager()

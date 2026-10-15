@@ -1,30 +1,62 @@
+"""Hermes plugin entry point: `hermes agy` CLI, request middleware, and provider registration."""
+
 from __future__ import annotations
 
 import argparse
+import time
+from pathlib import Path
 from typing import Any
 
+from . import __version__
 from .hermes_provider import PLACEHOLDER_API_KEY, PLACEHOLDER_API_KEY_ENV, PROVIDER_BASE_URL, PROVIDER_NAME, register_provider_profile
+from .credentials import SOURCE_KEYCHAIN
 from .models import DEFAULT_MODEL
-from .runtime import ensure_provider_profile_files, load_model_catalog
+from .paths import hermes_home
+from .service import default_service
 
-
-def _is_antigravity_request(provider: str | None, request: dict[str, Any]) -> bool:
-    if (provider or "").strip().lower() in {PROVIDER_NAME, "google-antigravity"}:
-        return True
-    return False
+PROVIDER_ALIASES = {PROVIDER_NAME, "google-antigravity"}
 
 
 def antigravity_llm_request(**kwargs: Any) -> dict[str, dict[str, Any]]:
+    """Pass the Hermes session id through so Antigravity sees one session per conversation."""
     request = dict(kwargs.get("request") or {})
-    if _is_antigravity_request(kwargs.get("provider"), request):
+    if (kwargs.get("provider") or "").strip().lower() in PROVIDER_ALIASES:
         session_id = kwargs.get("session_id")
         if session_id:
             request["_antigravity_session_id"] = str(session_id)
     return {"request": request}
 
 
+def ensure_provider_profile_files(root: Path | None = None) -> Path:
+    """Write the model-provider shim Hermes imports to register the `antigravity` profile.
+
+    The generated module only imports `antigravity_provider.hermes_provider`, so it keeps working
+    across plugin updates; that import path is a compatibility contract.
+    """
+    plugin_dir = Path(root or hermes_home()).expanduser() / "plugins" / "model-providers" / "antigravity"
+    plugin_dir.mkdir(parents=True, exist_ok=True)
+    (plugin_dir / "__init__.py").write_text(
+        "import sys\n"
+        "from pathlib import Path\n\n"
+        "_src = Path(__file__).resolve().parents[2] / 'antigravity-provider' / 'src'\n"
+        "if _src.is_dir() and str(_src) not in sys.path:\n"
+        "    sys.path.insert(0, str(_src))\n\n"
+        "from antigravity_provider.hermes_provider import register_provider_profile\n"
+        "register_provider_profile()\n",
+        encoding="utf-8",
+    )
+    (plugin_dir / "plugin.yaml").write_text(
+        "name: antigravity\n"
+        "kind: model-provider\n"
+        f"version: {__version__}\n"
+        "description: Google Antigravity provider profile\n",
+        encoding="utf-8",
+    )
+    return plugin_dir
+
 
 def _save_placeholder_api_key() -> None:
+    # Hermes expects an API key env var for api_key providers; the real auth is OAuth.
     try:
         from hermes_cli.config import get_env_value, save_env_value
 
@@ -56,17 +88,14 @@ def _select_model(model_id: str | None) -> None:
         raise SystemExit(f"Hermes config helpers are not available: {exc}") from exc
     if not model_id:
         try:
-            model_id = load_model_catalog().default_model
+            model_id = default_service().catalog().default_model
         except Exception:
             model_id = DEFAULT_MODEL
     config = load_config()
     model_cfg = config.get("model")
     if not isinstance(model_cfg, dict):
         model_cfg = {"default": model_cfg} if model_cfg else {}
-    model_cfg["provider"] = PROVIDER_NAME
-    model_cfg["default"] = model_id
-    model_cfg["base_url"] = PROVIDER_BASE_URL
-    model_cfg["api_mode"] = "chat_completions"
+    model_cfg.update(provider=PROVIDER_NAME, default=model_id, base_url=PROVIDER_BASE_URL, api_mode="chat_completions")
     config["model"] = model_cfg
     save_config(config)
     print(f"Default Hermes model set to {model_id} via provider '{PROVIDER_NAME}'.")
@@ -74,44 +103,37 @@ def _select_model(model_id: str | None) -> None:
 
 
 def _status() -> None:
-    from .credentials import CredentialStore, load_agy_keychain_credentials
-    store = CredentialStore.default()
-
-    stored = store.load()
-    keychain = {} if stored else load_agy_keychain_credentials()
-    data = stored or keychain
-    source = "browser OAuth" if stored else ("agy Keychain" if keychain else "none")
-    has_refresh = bool(data.get("refresh_token") or data.get("refresh"))
-    has_access = bool(data.get("access_token") or data.get("access") or data.get("token"))
-    print(f"credentials: {source}")
-    print(f"access token: {'yes' if has_access else 'no'}")
-    print(f"refresh token: {'yes' if has_refresh else 'no'}")
-    if data.get("email"):
-        print(f"account: {data['email']}")
+    status = default_service().credentials.describe()
+    print(f"credentials: {status['source']}")
+    print(f"access token: {'yes' if status['has_access_token'] else 'no'}")
+    print(f"refresh token: {'yes' if status['has_refresh_token'] else 'no'}")
+    if status["expires_at"]:
+        state = "expired" if status["expires_at"] <= time.time() else "valid"
+        print(f"access token expiry: {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(status['expires_at']))} ({state})")
+    if status["project_id"]:
+        print(f"project: {status['project_id']}")
+    if status["email"]:
+        print(f"account: {status['email']}")
 
 
 def _handle_cli(args: argparse.Namespace) -> None:
     command = getattr(args, "antigravity_command", None) or "status"
+    credentials = default_service().credentials
     if command == "login":
-        from .oauth import run_login
-
         ensure_provider_profile_files()
         _save_placeholder_api_key()
-        run_login(open_browser=not args.no_browser, timeout=args.timeout, prefer_keychain=not args.no_keychain)
-        print("Antigravity login complete.")
-        return
-    if command == "select":
+        result = credentials.login(use_keychain=not args.no_keychain, open_browser=not args.no_browser, timeout=args.timeout)
+        source = "agy Keychain" if result.source == SOURCE_KEYCHAIN else "browser OAuth"
+        print(f"Antigravity login complete ({source}{', ' + result.email if result.email else ''}).")
+    elif command == "select":
         ensure_provider_profile_files()
         _save_placeholder_api_key()
         _select_model(args.model)
-        return
-    if command == "logout":
-        from .credentials import CredentialStore
-
-        CredentialStore.default().delete()
+    elif command == "logout":
+        credentials.logout()
         print("Saved Antigravity browser OAuth credentials removed.")
-        return
-    _status()
+    else:
+        _status()
 
 
 def register(ctx: Any) -> None:

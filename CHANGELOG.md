@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.3.0
+
+- Preserve real Gemini thought signatures across turns through Hermes' tool-call `extra_content`; the skip placeholder is only used when history has none.
+- Give every tool call a unique ID; identical calls in different turns no longer share one.
+- Report `MALFORMED_FUNCTION_CALL`/`UNEXPECTED_TOOL_CALL` turns with no output as retryable provider errors instead of empty replies.
+- Make streams safe to close from another thread or after an async cancel, closing the upstream HTTP response.
+- Back off for five minutes after a failed model discovery instead of retrying on every request, serve the last-known-good catalog while a refresh runs, and refresh an expired token for discovery.
+- Ignore OAuth callbacks whose `state` does not match instead of ending the login.
+- Resolve credential and catalog files through Hermes' own home resolution (profiles, Windows), at call time; a login saved at the old location keeps working.
+- Reuse a token another Hermes process already refreshed instead of refreshing again.
+- `hermes agy status` shows token expiry and project; `ANTIGRAVITY_CLIENT_VERSION` overrides the presented client version.
+- Internal: split into credential, OAuth, transport, request, response, service, and Hermes layers; one version source.
+
 ## 0.2.2
 
 - Support Hermes asynchronous auxiliary requests through the native Antigravity transport.

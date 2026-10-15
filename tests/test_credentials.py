@@ -4,34 +4,63 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
-from antigravity_provider.credentials import CredentialStore, load_agy_keychain_credentials, parse_agy_keychain_secret
+from antigravity_provider.credentials import (
+    SOURCE_BROWSER,
+    SOURCE_KEYCHAIN,
+    CredentialStore,
+    Credentials,
+    load_agy_keychain_credentials,
+    parse_agy_keychain_secret,
+)
+
+
+class CredentialsTests(unittest.TestCase):
+    def test_legacy_key_spellings_are_normalized(self):
+        creds = Credentials.from_mapping(
+            {"access": "a", "refresh": "r", "expires": 123, "projectId": "p"}, source=SOURCE_BROWSER
+        )
+        self.assertEqual((creds.access_token, creds.refresh_token, creds.expires_at, creds.project_id), ("a", "r", 123.0, "p"))
+
+    def test_needs_refresh(self):
+        now = 1000.0
+        self.assertFalse(Credentials(access_token="a", refresh_token="r", expires_at=now + 3600).needs_refresh(now))
+        self.assertTrue(Credentials(access_token="a", refresh_token="r", expires_at=now + 30).needs_refresh(now))
+        self.assertTrue(Credentials(refresh_token="r").needs_refresh(now))
+        self.assertFalse(Credentials(access_token="a", expires_at=now - 1).needs_refresh(now))
+
+    def test_with_tokens_keeps_refresh_token_when_not_rotated(self):
+        creds = Credentials(access_token="old", refresh_token="r", project_id="p")
+        updated = creds.with_tokens({"access_token": "new", "expires_at": 5})
+        self.assertEqual((updated.access_token, updated.refresh_token, updated.project_id), ("new", "r", "p"))
 
 
 class CredentialStoreTests(unittest.TestCase):
     def test_round_trip_credentials(self):
         with tempfile.TemporaryDirectory() as d:
             store = CredentialStore(Path(d) / "credentials.json")
-            store.save({"refresh_token": "r", "access_token": "a", "project_id": "p", "expires_at": 123})
-            self.assertEqual(store.load()["project_id"], "p")
-            mode = os.stat(store.path).st_mode & 0o777
-            self.assertEqual(mode, 0o600)
+            store.save(Credentials(access_token="a", refresh_token="r", project_id="p", expires_at=123))
+            loaded = store.load()
+            self.assertEqual(loaded.project_id, "p")
+            self.assertEqual(loaded.source, SOURCE_BROWSER)
+            self.assertEqual(os.stat(store.path).st_mode & 0o777, 0o600)
+            self.assertNotIn("source", json.loads(store.path.read_text()))
             store.delete()
-            self.assertEqual(store.load(), {})
+            self.assertIsNone(store.load())
+
+    def test_reads_files_written_by_earlier_versions(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "credentials.json"
+            path.write_text(json.dumps({"access_token": "a", "refresh_token": "r", "expires_at": 1, "project_id": "p"}))
+            self.assertEqual(CredentialStore(path).load().refresh_token, "r")
 
     def test_default_path_is_profile_scoped(self):
-        old_home = os.environ.get("HERMES_HOME")
-        with tempfile.TemporaryDirectory() as d:
-            try:
-                os.environ["HERMES_HOME"] = d
-                store = CredentialStore.default()
-                self.assertEqual(store.path, Path(d) / ".antigravity_oauth.json")
-            finally:
-                if old_home is None:
-                    os.environ.pop("HERMES_HOME", None)
-                else:
-                    os.environ["HERMES_HOME"] = old_home
+        with tempfile.TemporaryDirectory() as d, patch.dict(os.environ, {"HERMES_HOME": d}):
+            self.assertEqual(CredentialStore.default().path, Path(d) / ".antigravity_oauth.json")
 
+
+class KeychainTests(unittest.TestCase):
     def test_parse_agy_keychain_secret(self):
         payload = {
             "auth_method": "consumer",
@@ -44,13 +73,13 @@ class CredentialStoreTests(unittest.TestCase):
         }
         raw = "go-keyring-base64:" + base64.b64encode(json.dumps(payload).encode()).decode()
         parsed = parse_agy_keychain_secret(raw)
-        self.assertEqual(parsed["source"], "agy-keychain")
-        self.assertEqual(parsed["access_token"], "a")
-        self.assertEqual(parsed["refresh_token"], "r")
-        self.assertIsInstance(parsed["expires_at"], float)
+        self.assertEqual(parsed.source, SOURCE_KEYCHAIN)
+        self.assertEqual((parsed.access_token, parsed.refresh_token), ("a", "r"))
+        self.assertIsInstance(parsed.expires_at, float)
 
-    def test_load_agy_keychain_credentials_swallow_missing_keychain(self):
-        self.assertEqual(load_agy_keychain_credentials(runner=lambda: "not-json"), {})
+    def test_unreadable_keychain_is_no_credential(self):
+        self.assertIsNone(load_agy_keychain_credentials(runner=lambda: "not-json"))
+
 
 if __name__ == "__main__":
     unittest.main()

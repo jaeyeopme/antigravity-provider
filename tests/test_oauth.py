@@ -1,65 +1,98 @@
-import tempfile
+import os
+import threading
 import unittest
-from pathlib import Path
+import urllib.error
+import urllib.request
+from unittest.mock import patch
 
-import antigravity_provider.oauth as oauth_module
-from antigravity_provider.credentials import CredentialStore
-from antigravity_provider.oauth import oauth_client, refresh_access_token, refresh_if_needed
+from antigravity_provider import oauth
+from antigravity_provider.errors import AntigravityError
 
 
-class OAuthTests(unittest.TestCase):
+class TokenTests(unittest.TestCase):
     def test_oauth_client_is_bundled(self):
-        client_id, client_secret = oauth_client()
+        client_id, client_secret = oauth.oauth_client()
         self.assertEqual(client_id.split("-", 1)[0], "1071006060591")
         self.assertTrue(client_id.endswith(".apps.googleusercontent.com"))
         self.assertTrue(client_secret.startswith("GOCSPX-"))
 
     def test_refresh_access_token(self):
         calls = []
-        def fake_post(url, data, headers):
-            calls.append((url, data, headers))
+
+        def fake_post(url, form):
+            calls.append((url, form))
             return {"access_token": "new-access", "expires_in": 3600, "token_type": "Bearer"}
 
-        refreshed = refresh_access_token("refresh-token", post_json=fake_post, client=("client-id", "client-secret"))
+        refreshed = oauth.refresh_access_token("refresh-token", post_form=fake_post, client=("id", "secret"))
         self.assertEqual(refreshed["access_token"], "new-access")
         self.assertEqual(refreshed["refresh_token"], "refresh-token")
         self.assertGreater(refreshed["expires_at"], 0)
-        self.assertIn("refresh_token", calls[0][1])
+        self.assertEqual(calls[0][1]["grant_type"], "refresh_token")
 
     def test_refresh_access_token_keeps_rotated_refresh_token(self):
-        def fake_post(url, data, headers):
+        def fake_post(url, form):
             return {"access_token": "new-access", "refresh_token": "new-refresh", "expires_in": 3600}
 
-        refreshed = refresh_access_token("old-refresh", post_json=fake_post, client=("client-id", "client-secret"))
+        refreshed = oauth.refresh_access_token("old-refresh", post_form=fake_post, client=("id", "secret"))
         self.assertEqual(refreshed["refresh_token"], "new-refresh")
 
-    def test_refresh_if_needed_uses_existing_fresh_token(self):
-        credentials = {"access_token": "a", "refresh_token": "r", "expires_at": 9999999999}
-        self.assertIs(refresh_if_needed(credentials), credentials)
+    def test_code_exchange_requires_refresh_token(self):
+        with self.assertRaisesRegex(AntigravityError, "No refresh token"):
+            oauth.exchange_code_for_tokens(
+                "code", redirect_uri="http://x", code_verifier="v", post_form=lambda url, form: {"access_token": "a"}
+            )
 
-    def test_login_imports_keychain_before_browser_oauth(self):
-        old_load = oauth_module.load_agy_keychain_credentials
-        old_project = oauth_module.load_or_onboard_project
-        old_email = oauth_module.fetch_user_email
+
+class LoginUrlTests(unittest.TestCase):
+    def test_auth_url_uses_loopback_callback(self):
+        url, verifier = oauth.build_auth_url("state-1")
+        self.assertIn("accounts.google.com/o/oauth2/v2/auth", url)
+        self.assertIn("redirect_uri=http%3A%2F%2F127.0.0.1%3A51121%2Foauth-callback", url)
+        self.assertIn("code_challenge=", url)
+        self.assertIn("state=state-1", url)
+        self.assertTrue(verifier)
+
+    def test_auth_url_supports_container_bind_with_host_redirect(self):
+        env = {"ANTIGRAVITY_OAUTH_REDIRECT_HOST": "localhost", "ANTIGRAVITY_OAUTH_PORT": "51122"}
+        with patch.dict(os.environ, env):
+            url, _ = oauth.build_auth_url("state-1")
+        self.assertIn("redirect_uri=http%3A%2F%2Flocalhost%3A51122%2Foauth-callback", url)
+
+
+class CallbackServerTests(unittest.TestCase):
+    def request(self, server, query):
+        port = server.server_address[1]
         try:
-            oauth_module.load_agy_keychain_credentials = lambda: {
-                "access_token": "a",
-                "refresh_token": "r",
-                "expires_at": 9999999999,
-                "source": "agy-keychain",
-            }
-            oauth_module.load_or_onboard_project = lambda access: "p"
-            oauth_module.fetch_user_email = lambda access: "user@example.com"
-            with tempfile.TemporaryDirectory() as d:
-                store = CredentialStore(Path(d) / "credentials.json")
-                store.save({"access_token": "browser", "refresh_token": "browser-ref"})
-                credentials = oauth_module.run_login(open_browser=False, timeout=0, store=store)
-                self.assertEqual(credentials["project_id"], "p")
-                self.assertEqual(store.load(), {})
+            with urllib.request.urlopen(f"http://127.0.0.1:{port}/oauth-callback?{query}") as response:
+                return response.status
+        except urllib.error.HTTPError as exc:
+            return exc.code
+
+    def serve_one(self, server, query):
+        result = {}
+        thread = threading.Thread(target=lambda: result.setdefault("status", self.request(server, query)))
+        thread.start()
+        server.handle_request()
+        thread.join(5)
+        return result["status"]
+
+    def test_request_with_wrong_state_is_ignored(self):
+        server = oauth._CallbackServer(("127.0.0.1", 0), "expected")
+        try:
+            self.assertEqual(self.serve_one(server, "code=attacker&state=wrong"), 400)
+            self.assertIsNone(server.received_code)
+            self.assertEqual(self.serve_one(server, "code=real&state=expected"), 200)
+            self.assertEqual(server.received_code, "real")
         finally:
-            oauth_module.load_agy_keychain_credentials = old_load
-            oauth_module.load_or_onboard_project = old_project
-            oauth_module.fetch_user_email = old_email
+            server.server_close()
+
+    def test_error_with_wrong_state_does_not_abort_login(self):
+        server = oauth._CallbackServer(("127.0.0.1", 0), "expected")
+        try:
+            self.serve_one(server, "error=access_denied&state=wrong")
+            self.assertIsNone(server.received_error)
+        finally:
+            server.server_close()
 
 
 if __name__ == "__main__":
