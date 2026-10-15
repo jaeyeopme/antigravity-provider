@@ -7,6 +7,7 @@ PYTHONPATH="${PWD}/src${PYTHONPATH:+:$PYTHONPATH}" python -m unittest discover -
 # + __init__.py shim path used by `hermes plugins install <repo> --enable`.
 if command -v hermes >/dev/null 2>&1 && command -v git >/dev/null 2>&1; then
   tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' EXIT
   repo="$tmp/repo"
   home="$tmp/home"
   export SRC_ROOT="$(pwd)"
