@@ -16,7 +16,8 @@ from .models import normalize_effort, normalize_model_id
 from .schema import to_gemini_schema
 
 # Gemini 3 rejects replayed functionCall parts without a thought signature. When history has no
-# real signature (other provider, or a pre-0.3 session) this documented placeholder is sent instead.
+# real signature (other provider, or a session from before 2026.10.15), this documented placeholder
+# is sent instead.
 SKIP_THOUGHT_SIGNATURE = "skip_thought_signature_validator"
 
 

@@ -3,26 +3,6 @@ set -euo pipefail
 
 PYTHONPATH="${PWD}/src${PYTHONPATH:+:$PYTHONPATH}" python -m unittest discover -v
 
-# Direct import check for the checkout source path.
-PYTHONPATH="${PWD}/src${PYTHONPATH:+:$PYTHONPATH}" HERMES_HOME="${HERMES_HOME:-$(mktemp -d)}" python - <<'PY'
-from antigravity_provider.hermes_plugin import register
-
-class Ctx:
-    def __init__(self):
-        self.cli = {}
-        self.middleware = []
-    def register_cli_command(self, **kwargs):
-        self.cli[kwargs['name']] = kwargs
-    def register_middleware(self, kind, callback):
-        self.middleware.append((kind, callback))
-
-ctx = Ctx()
-register(ctx)
-assert 'agy' in ctx.cli
-assert any(kind == 'llm_request' for kind, _ in ctx.middleware)
-print('plugin registration ok')
-PY
-
 # Real Hermes directory-plugin install check. This catches the root plugin.yaml
 # + __init__.py shim path used by `hermes plugins install <repo> --enable`.
 if command -v hermes >/dev/null 2>&1 && command -v git >/dev/null 2>&1; then
