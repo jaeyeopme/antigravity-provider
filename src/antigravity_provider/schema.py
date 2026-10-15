@@ -3,6 +3,23 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any
 
+# The only fields of the Gemini ``Schema`` message. Cloud Code parses function declarations into it
+# for every model, so any other field (``const``, ``exclusiveMinimum``, ...) fails the request.
+_SCHEMA_FIELDS = {
+    "type", "format", "title", "description", "nullable", "enum", "maxItems", "minItems", "properties", "required",
+    "minProperties", "maxProperties", "minLength", "maxLength", "pattern", "example", "anyOf", "propertyOrdering",
+    "default", "items", "minimum", "maximum",
+}
+
+
+def _enum_string(value: Any) -> str | None:
+    """Enum entries must be strings, whatever the declared type."""
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, (str, int, float)):
+        return str(value)
+    return None
+
 
 def to_gemini_schema(schema: Any) -> dict[str, Any]:
     """Convert an OpenAI tool JSON Schema to the subset Cloud Code accepts.
@@ -10,11 +27,13 @@ def to_gemini_schema(schema: Any) -> dict[str, Any]:
     Local ``$ref``s are inlined, nullable unions collapse to their non-null branch, and other
     ``anyOf``/``oneOf`` unions widen into one permissive schema (properties unioned, ``required``
     intersected, enums merged) because the backend rejects unions in function declarations.
+    Fields outside the Gemini ``Schema`` are dropped (``const`` becomes a one-value ``enum``), enum
+    entries become strings, arrays always get ``items``, and ``required`` names only defined
+    properties: the backend rejects the whole request otherwise.
     """
     if not isinstance(schema, dict):
         return {"type": "object", "properties": {}}
     root = deepcopy(schema)
-    banned = {"$schema", "$defs", "definitions", "additionalProperties", "patternProperties", "unevaluatedProperties"}
 
     def pointer(ref: str) -> Any:
         if not ref.startswith("#/"):
@@ -112,15 +131,30 @@ def to_gemini_schema(schema: Any) -> dict[str, Any]:
                 value = {key: nested for key, nested in value.items() if key != "type"}
                 if len(non_null_types) == 1:
                     value["type"] = non_null_types[0]
+            if "const" in value and "enum" not in value:
+                value = {**value, "enum": [value["const"]]}
             cleaned_value: dict[str, Any] = {}
             for key, nested in value.items():
-                if key in banned:
+                if key not in _SCHEMA_FIELDS:
                     continue
                 if key == "properties" and isinstance(nested, dict):
                     # Keys here are parameter names, not schema keywords: keep them all.
                     cleaned_value[key] = {name: clean(prop, resolving) for name, prop in nested.items()}
-                else:
+                elif key == "items":
                     cleaned_value[key] = clean(nested, resolving)
+                elif key == "enum" and isinstance(nested, list):
+                    cleaned_value[key] = [item for item in map(_enum_string, nested) if item is not None]
+                else:
+                    cleaned_value[key] = nested  # default/example values are data, not schemas
+            if cleaned_value.get("type") == "array" and not isinstance(cleaned_value.get("items"), dict):
+                cleaned_value["items"] = {}
+            if isinstance(cleaned_value.get("required"), list):
+                defined = cleaned_value.get("properties") if isinstance(cleaned_value.get("properties"), dict) else {}
+                required = [name for name in cleaned_value["required"] if name in defined]
+                if required:
+                    cleaned_value["required"] = required
+                else:
+                    del cleaned_value["required"]
             return cleaned_value
         if isinstance(value, list):
             return [clean(nested, resolving) for nested in value]

@@ -85,6 +85,40 @@ class SchemaTests(unittest.TestCase):
         self.assertNotIn("anyOf", notify)
 
 
+    def test_keeps_only_fields_the_backend_schema_accepts(self):
+        # Cloud Code rejects unknown fields like const/exclusiveMinimum for every model.
+        out = to_gemini_schema({
+            "type": "object",
+            "properties": {
+                "kind": {"type": "string", "const": "search", "examples": ["search"]},
+                "limit": {"type": "integer", "exclusiveMinimum": 0, "minimum": 1, "default": 10},
+            },
+        })
+        self.assertEqual(out["properties"]["kind"], {"type": "string", "enum": ["search"]})
+        self.assertEqual(out["properties"]["limit"], {"type": "integer", "minimum": 1, "default": 10})
+
+    def test_enum_values_become_strings(self):
+        out = to_gemini_schema({"type": "object", "properties": {
+            "level": {"type": "integer", "enum": [1, 2, 3]},
+            "flag": {"type": "boolean", "enum": [True, False]},
+        }})
+        self.assertEqual(out["properties"]["level"]["enum"], ["1", "2", "3"])
+        self.assertEqual(out["properties"]["flag"]["enum"], ["true", "false"])
+
+    def test_array_without_items_gets_items(self):
+        out = to_gemini_schema({"type": "object", "properties": {"tags": {"type": "array"}}})
+        self.assertIn("items", out["properties"]["tags"])
+
+    def test_required_lists_only_defined_properties(self):
+        self.assertNotIn("required", to_gemini_schema({"type": "object", "required": ["query"]}))
+        out = to_gemini_schema({"type": "object", "properties": {"a": {"type": "string"}}, "required": ["a", "b"]})
+        self.assertEqual(out["required"], ["a"])
+
+    def test_default_and_example_values_are_kept_verbatim(self):
+        value = {"const": 1, "additionalProperties": True}
+        out = to_gemini_schema({"type": "object", "properties": {"opts": {"type": "object", "default": value}}})
+        self.assertEqual(out["properties"]["opts"]["default"], value)
+
 
 if __name__ == "__main__":
     unittest.main()
