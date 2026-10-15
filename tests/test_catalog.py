@@ -100,6 +100,29 @@ class CatalogTests(unittest.TestCase):
         catalog = build_catalog(CATALOG_PAYLOAD)
         self.assertEqual(catalog.default_model, "google-antigravity/gemini-3.9-flash")
 
+    def test_aux_model_is_the_backends_cheap_pick_when_listed(self):
+        payload = {
+            "models": {"gemini-3.5-flash-lite": {}, "claude-sonnet-4-6": {}},
+            "defaultAgentModelId": "claude-sonnet-4-6",
+            "commitMessageModelIds": ["gemini-3.5-flash-lite"],
+        }
+        self.assertEqual(build_catalog(payload).aux_model, "google-antigravity/gemini-3.5-flash-lite")
+        tiered = {**payload, "commitMessageModelIds": [], "tieredModelIds": {"flashLite": ["gemini-3.5-flash-lite"]}}
+        self.assertEqual(build_catalog(tiered).aux_model, "google-antigravity/gemini-3.5-flash-lite")
+
+    def test_aux_model_falls_back_to_default_when_pick_is_not_listed(self):
+        payload = {
+            "models": {"claude-sonnet-4-6": {}},
+            "defaultAgentModelId": "claude-sonnet-4-6",
+            "commitMessageModelIds": ["gemini-3.5-flash-lite"],
+        }
+        self.assertEqual(build_catalog(payload).aux_model, "google-antigravity/claude-sonnet-4-6")
+
+    def test_seed_lists_its_aux_model_and_no_retired_flash(self):
+        seed = fallback_catalog()
+        self.assertIn(seed.aux_model, seed.model_ids())
+        self.assertNotIn("google-antigravity/gemini-3.5-flash", seed.model_ids())
+
     def test_unsuffixed_default_beats_nonmatching_thinking_variant(self):
         catalog = build_catalog({
             "models": {

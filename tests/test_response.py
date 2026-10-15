@@ -3,6 +3,8 @@ import unittest
 from antigravity_provider.errors import AntigravityError
 from antigravity_provider.response import collect_response, to_openai_completion, to_openai_stream_chunks
 
+NOTICE = "Gemini 3.5 Flash is no longer available. Please switch to Gemini 3.7 Flash in the latest version of Antigravity."
+
 
 def candidate(parts, finish="STOP"):
     return {"candidates": [{"content": {"parts": parts}, "finishReason": finish}]}
@@ -90,8 +92,15 @@ class StreamTests(unittest.TestCase):
 
     def test_stream_cut_off_before_finish_reason_sends_no_finish_chunk(self):
         # Hermes keeps the partial reply and requests a continuation when finish_reason never arrives.
-        chunks = list(to_openai_stream_chunks("gemini-3.1-pro", [candidate([{"text": "hal"}], None)]))
+        events = [{**candidate([{"text": "hal"}], None), "responseId": "r1"}]
+        chunks = list(to_openai_stream_chunks("gemini-3.1-pro", events))
         self.assertEqual([c["choices"][0]["finish_reason"] for c in chunks], [None])
+
+    def test_backend_notice_without_response_id_is_a_complete_reply(self):
+        # A retired model answers with only this text: no responseId, no usage, no finishReason.
+        chunks = list(to_openai_stream_chunks("gemini-3.5-flash", [candidate([{"text": NOTICE}], None)]))
+        self.assertEqual(chunks[0]["choices"][0]["delta"]["content"], NOTICE)
+        self.assertEqual(chunks[-1]["choices"][0]["finish_reason"], "stop")
 
     def test_usage_sent_after_finish_event_reaches_the_final_chunk(self):
         events = [candidate([{"text": "hi"}]), {"usageMetadata": {"promptTokenCount": 5, "candidatesTokenCount": 2}}]
@@ -122,7 +131,12 @@ class CollectTests(unittest.TestCase):
 
     def test_response_without_finish_reason_is_a_truncation_error(self):
         with self.assertRaisesRegex(AntigravityError, "finish reason"):
-            collect_response([candidate([{"text": "hal"}], None)])
+            collect_response([{**candidate([{"text": "hal"}], None), "responseId": "r1"}])
+
+    def test_backend_notice_without_response_id_is_a_complete_reply(self):
+        out = collect_response([candidate([{"text": NOTICE}], None)])
+        self.assertEqual(out["candidates"][0]["finishReason"], "STOP")
+        self.assertEqual(out["candidates"][0]["content"]["parts"], [{"text": NOTICE}])
 
 
 if __name__ == "__main__":

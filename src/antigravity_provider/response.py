@@ -87,10 +87,11 @@ def collect_response(chunks: Iterable[dict[str, Any]]) -> dict[str, Any]:
     error = _empty_stream(bool(parts), finish)
     if error is not None:
         raise error
-    if finish is None:
+    # Model events carry a responseId; a backend notice (e.g. a retired model) has none and no finishReason.
+    if finish is None and response_id:
         raise AntigravityError("Antigravity stream ended without a finish reason", status=502)
     response: dict[str, Any] = {
-        "candidates": [{"content": {"role": "model", "parts": parts}, "finishReason": finish}],
+        "candidates": [{"content": {"role": "model", "parts": parts}, "finishReason": finish or "STOP"}],
         "usageMetadata": usage,
     }
     if response_id:
@@ -141,6 +142,7 @@ def to_openai_stream_chunks(model: str, events: Iterable[dict[str, Any]]) -> Ite
     tool_index = 0
     produced_output = False
     saw_part = False
+    model_turn = False
     finish: str | None = None
     usage: dict[str, int] | None = None
 
@@ -157,6 +159,7 @@ def to_openai_stream_chunks(model: str, events: Iterable[dict[str, Any]]) -> Ite
         return value
 
     for event in events:
+        model_turn = model_turn or bool(event.get("responseId"))
         candidate = _candidate(event)
         for part in _parts(candidate):
             saw_part = True
@@ -182,6 +185,7 @@ def to_openai_stream_chunks(model: str, events: Iterable[dict[str, Any]]) -> Ite
     error = _empty_stream(saw_part, finish)
     if error is not None:
         raise error
-    if finish is None:
+    # A stream without a responseId is a backend notice (e.g. a retired model): the whole reply.
+    if finish is None and model_turn:
         return  # cut off: without a finish_reason Hermes requests a continuation
     yield chunk({}, "tool_calls" if tool_index else _finish_reason(finish), usage)

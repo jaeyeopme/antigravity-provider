@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.3
+
+- Pick the model for Hermes side tasks (titles, compression, ...) from the account's catalog: the backend's cheap pick (`gemini-3.5-flash-lite`) when listed, else the account default. The fixed `gemini-3.1-pro` returned 404 on accounts without it.
+- Show a retired model's notice ("Gemini 3.5 Flash is no longer available...") as the reply. It arrives without a finish reason, so Hermes kept requesting continuations and never showed it.
+- Drop retired Gemini 3.5 Flash routes from the offline model list.
+
 ## 0.3.2
 
 - Keep tool schemas inside what the backend accepts: drop unsupported fields (`const` becomes a one-value `enum`), send enum values as strings, give arrays `items`, and list only defined properties as `required`. One MCP tool using these failed every request.
