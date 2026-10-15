@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from .antigravity_client import ANTIGRAVITY_ENDPOINTS
 from .catalog import catalog_manager, fallback_catalog
+from .client import ANTIGRAVITY_ENDPOINTS
 from .models import DEFAULT_MODEL, normalize_effort
 
 PROVIDER_NAME = "antigravity"
@@ -31,7 +31,7 @@ def register_provider_profile() -> bool:
 
     class AntigravityProfile(ProviderProfile):
         def create_client(self, **client_kwargs: Any) -> Any:
-            from .runtime import HermesAntigravityClient
+            from .hermes_client import HermesAntigravityClient
 
             return HermesAntigravityClient(**client_kwargs)
 
@@ -45,13 +45,14 @@ def register_provider_profile() -> bool:
             return {}, ({"reasoning_effort": effort} if effort else {})
 
         def get_max_tokens(self, model: str | None) -> int | None:
+            # Hot path: answer from the last catalog without network calls.
             return catalog_manager.current().max_tokens(model or DEFAULT_MODEL)
 
         def fetch_models(self, **kwargs: Any) -> list[str] | None:
-            from .runtime import load_model_catalog
+            from .service import default_service
 
             try:
-                return load_model_catalog().model_ids()
+                return default_service().catalog().model_ids()
             except Exception:
                 return None
 

@@ -56,7 +56,7 @@ Removing the plugin alone does not remove profile auth state.
 ## Requirements
 
 - Hermes Agent with `ProviderProfile.create_client` support; verified on 0.21.5.
-- Python 3.11+.
+- Python 3.11+ (current Hermes releases run on 3.14).
 - Google account with Antigravity access.
 
 The package uses only the Python standard library.
@@ -111,6 +111,8 @@ Provider failures propagate through Hermes retry, fallback, and error telemetry.
 | `Missing Antigravity credentials`. | Run `hermes agy login`; use `--no-keychain` to create a browser OAuth override when the `agy` Keychain credential is stale. |
 | A newly launched model is missing. | Re-run the model picker after the four-hour catalog TTL, or run `hermes agy select <model-id>` when the backend already advertises it. |
 | OAuth callback port is busy. | Run `ANTIGRAVITY_OAUTH_PORT=51122 hermes agy login --no-keychain`. |
+| Requests start failing after an Antigravity update. | Try `ANTIGRAVITY_CLIENT_VERSION=<current agy version>`; the plugin presents itself as that client version. |
+| Not sure which account or token is in use. | Run `hermes agy status` (credential source, token expiry, project, account). |
 
 ## Development
 
@@ -123,4 +125,24 @@ scripts/validate_hermes.sh
 ```
 
 `scripts/validate_hermes.sh` also checks directory-plugin installation when
-`hermes` and `git` are available.
+`hermes` and `git` are available. With Hermes installed in the active Python,
+`python scripts/e2e_hermes.py` runs a real Hermes agent turn, including a tool
+call, against a local fake Antigravity backend; run it before releases and after
+Hermes upgrades.
+
+Module map (`src/antigravity_provider/`), from Hermes inward:
+
+| Module | Responsibility |
+| --- | --- |
+| `hermes_plugin.py` | Plugin entry point: `hermes agy` CLI, `llm_request` middleware. |
+| `hermes_provider.py` | Registers the `antigravity` provider profile. Generated shims import it, so keep its path. |
+| `hermes_client.py` | OpenAI-client-shaped facade Hermes calls; sync/async, closable streams. |
+| `service.py` | One request end to end: credentials, model routing, 401 refresh-and-retry. |
+| `request.py` / `schema.py` | OpenAI request and tool schemas → Cloud Code body. |
+| `response.py` | Cloud Code chunks → OpenAI completions and stream chunks. |
+| `client.py` | HTTP/SSE transport with endpoint fallback. |
+| `catalog.py` | Account model discovery, routing, and the last-known-good cache. |
+| `auth.py` / `credentials.py` / `oauth.py` / `cloudcode.py` | Credential selection and refresh, storage and Keychain, Google OAuth, project onboarding. |
+
+The version lives in `src/antigravity_provider/__init__.py`; keep `plugin.yaml`
+and `CHANGELOG.md` in step (a test enforces it).
