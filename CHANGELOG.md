@@ -1,7 +1,5 @@
 # Changelog
 
-## Unreleased
-
 ## 0.3.3
 
 - Pick the model for Hermes side tasks (titles, compression, ...) from the account's catalog: the backend's cheap pick (`gemini-3.5-flash-lite`) when listed, else the account default. The fixed `gemini-3.1-pro` returned 404 on accounts without it.

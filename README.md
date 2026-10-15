@@ -165,22 +165,24 @@ scripts/validate_hermes.sh
 `scripts/validate_hermes.sh` also installs the checkout as a Hermes directory
 plugin when `hermes` and `git` are available. With Hermes importable,
 `python scripts/e2e_hermes.py` runs a real Hermes agent turn, including a tool
-call, against a local fake backend. Run it before releases and after Hermes
+call, against a local fake backend. Run it before merging a code pull request and after Hermes
 upgrades.
 
 `hermes plugins install` and `update` take the latest commit on `main`, so a
-merge to `main` is what reaches users; versions and tags are records.
+merge to `main` is a release. The repository is kept that way:
 
-- Code changes go through a pull request, one per batch of related work, with
-  one commit per change. Squash-merge it once CI passes. Docs and chores can go
-  straight to `main`.
-- A pull request does not change the version. It adds its user-visible changes
-  under `## Unreleased` at the top of `CHANGELOG.md`.
-- To release, once a batch is done or a fix needs announcing, make one
-  `chore: release X.Y.Z` commit: rename `## Unreleased` to `## X.Y.Z` (and
-  start a new empty `## Unreleased`), and set the version in
-  `src/antigravity_provider/__init__.py` and `plugin.yaml` (a test keeps them
-  and the changelog in step). Then tag it `vX.Y.Z` and publish a GitHub release.
+- **Code** is whatever Hermes installs and runs: `src/`, `__init__.py`, `plugin.yaml`. Code
+  changes go through one pull request per batch of work, one commit per change,
+  squash-merged once CI passes.
+- **Every code pull request bumps the version** and adds its section to
+  `CHANGELOG.md` in the same pull request. Patch (`0.3.3` → `0.3.4`) for fixes
+  and internal changes; minor (`0.3.x` → `0.4.0`) when users get something new
+  or have to act (a new command or option, a removed feature, a config change,
+  signing in again). The version lives in `src/antigravity_provider/__init__.py`
+  and `plugin.yaml`; a test keeps them and the changelog in step.
+- **Docs, tests, scripts and CI** go straight to `main`, without a version bump
+  or changelog entry.
+- No tags or GitHub releases: Hermes does not use them.
 
 Modules in `src/antigravity_provider/`, from Hermes inward:
 
