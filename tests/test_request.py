@@ -170,6 +170,12 @@ class RequestTests(unittest.TestCase):
         body = self._tool_history("gemini-3.1-pro")
         self.assertEqual(body["request"]["contents"][1]["parts"][0]["thoughtSignature"], SKIP_THOUGHT_SIGNATURE)
 
+    def test_replayed_tool_call_and_result_carry_the_call_id(self):
+        for model in ("claude-sonnet-4-6", "gpt-oss-120b", "gemini-3.1-pro"):
+            contents = self._tool_history(model)["request"]["contents"]
+            self.assertEqual(contents[1]["parts"][0]["functionCall"]["id"], "c1")
+            self.assertEqual(contents[2]["parts"][0]["functionResponse"]["id"], "c1")
+
     def test_non_gemini3_route_gets_no_placeholder_signature(self):
         body = self._tool_history("claude-sonnet-4-6")
         self.assertNotIn("thoughtSignature", body["request"]["contents"][1]["parts"][0])

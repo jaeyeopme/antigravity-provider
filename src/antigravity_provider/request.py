@@ -151,9 +151,11 @@ def _model_parts(message: dict[str, Any], wire_model: str, call_names: dict[str,
         name = fn.get("name") if isinstance(fn, dict) else None
         if not name:
             continue
+        part = {"functionCall": {"name": name, "args": _parse_args(fn.get("arguments"))}}
         if tool_call.get("id"):
             call_names[str(tool_call["id"])] = name
-        part = {"functionCall": {"name": name, "args": _parse_args(fn.get("arguments"))}}
+            # Claude and gpt-oss routes reject replayed tool calls and results without their id.
+            part["functionCall"]["id"] = str(tool_call["id"])
         calls.append((part, thought_signature(tool_call)))
 
     if not _accepts_thought_signature(wire_model):
@@ -256,6 +258,8 @@ def _contents(messages: list[dict[str, Any]], wire_model: str) -> tuple[list[dic
         elif role == "tool":
             name = message.get("name") or call_names.get(str(message.get("tool_call_id") or "")) or "tool"
             part = {"functionResponse": {"name": name, "response": {"output": _content_text(message.get("content"))}}}
+            if message.get("tool_call_id"):
+                part["functionResponse"]["id"] = str(message["tool_call_id"])
             previous = contents[-1] if contents else None
             # Results of one parallel tool batch go back together in a single user turn.
             if previous and previous["role"] == "user" and any("functionResponse" in p for p in previous["parts"]):
