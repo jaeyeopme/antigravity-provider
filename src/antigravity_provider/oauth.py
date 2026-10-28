@@ -68,15 +68,27 @@ def refresh_access_token(
     client: tuple[str, str] | None = None,
 ) -> dict[str, Any]:
     client_id, client_secret = client or oauth_client()
-    data = (post_form or _post_form)(
-        TOKEN_URL,
-        {
-            "client_id": client_id,
-            "client_secret": client_secret,
-            "refresh_token": refresh_token,
-            "grant_type": "refresh_token",
-        },
-    )
+    try:
+        data = (post_form or _post_form)(
+            TOKEN_URL,
+            {
+                "client_id": client_id,
+                "client_secret": client_secret,
+                "refresh_token": refresh_token,
+                "grant_type": "refresh_token",
+            },
+        )
+    except AntigravityError as exc:
+        # Google answers a revoked or expired refresh token (password change, removed access) with
+        # 400 invalid_grant; only a new sign-in fixes it.
+        if "invalid_grant" in exc.message:
+            raise AntigravityError(
+                "Antigravity sign-in expired or was revoked. Run `hermes agy login`"
+                " (sign in to `agy` again first if you use its Keychain credential).",
+                status=401,
+                error_type="invalid_request_error",
+            ) from exc
+        raise
     if not data.get("access_token"):
         raise AntigravityError(
             "OAuth refresh response did not include access_token", status=401, error_type="invalid_request_error"
