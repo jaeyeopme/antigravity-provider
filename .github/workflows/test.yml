@@ -20,3 +20,27 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - run: pip install -e . && python -m unittest discover -v
+
+  # Installs a fresh Hermes on a throwaway runner, so the real plugin install and agent turn are
+  # checked without touching anyone's own Hermes.
+  hermes:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+      - run: curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash -s -- --non-interactive --skip-browser --skip-computer-use
+      - run: echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - run: hermes --version
+      - run: scripts/validate_hermes.sh
+      - name: e2e_hermes.py
+        run: |
+          python3_hermes="$(ls -d "$HOME"/.hermes/tools/python-*/bin/python3 | head -1)"
+          "$python3_hermes" -I -c "
+          import runpy, sys
+          sys.path.insert(0, '$HOME/.hermes/hermes-agent')
+          import hermes_bootstrap
+          sys.argv = ['scripts/e2e_hermes.py']
+          runpy.run_path('scripts/e2e_hermes.py', run_name='__main__')
+          "
