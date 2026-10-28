@@ -5,32 +5,45 @@ PYTHONPATH="${PWD}/src${PYTHONPATH:+:$PYTHONPATH}" python -m unittest discover -
 
 # Real Hermes directory-plugin install check. This catches the root plugin.yaml
 # + __init__.py shim path used by `hermes plugins install <repo> --enable`.
-if command -v hermes >/dev/null 2>&1 && command -v git >/dev/null 2>&1; then
-  tmp="$(mktemp -d)"
-  trap 'rm -rf "$tmp"' EXIT
-  repo="$tmp/repo"
-  home="$tmp/home"
-  export SRC_ROOT="$(pwd)"
-  export TEST_REPO="$repo"
-  # A temp HERMES_HOME makes Hermes build its runtime under it and repoint the
-  # user's shared launchers there. Pin the runtime the user's launcher already
-  # runs (<store>/<python entry>/bin/python3), and check the launcher after.
-  launch="$(hermes --print-runtime-command)"
+# A temp HERMES_HOME makes Hermes build its runtime under it and repoint the
+# user's shared launchers there. Pin the runtime the user's launcher already
+# runs (<store>/<python entry>/bin/python3), and check the launcher after.
+# Hermes builds without --print-runtime-command skip the check instead of
+# risking the user's install.
+launch=""
+if ! command -v hermes >/dev/null 2>&1 || ! command -v git >/dev/null 2>&1; then
+  skip='hermes or git is missing'
+else
+  launch="$(hermes --print-runtime-command 2>/dev/null)" || launch=""
   if [ -z "${HERMES_RUNTIME_DIR:-}" ]; then
     HERMES_RUNTIME_DIR="$(LAUNCH="$launch" python - <<'PY'
 import json
 import os
 from pathlib import Path
 
-py = Path(json.loads(os.environ['LAUNCH'])[0])
+try:
+    py = Path(json.loads(os.environ['LAUNCH'])[0])
+except (ValueError, TypeError, IndexError, KeyError):
+    raise SystemExit(0)
 store = py.parent.parent.parent
-if py.parent.name != 'bin' or not (store / 'facts.json').is_file():
-    raise SystemExit(f'cannot find the Hermes runtime store from {py}')
-print(store)
+if py.parent.name == 'bin' and (store / 'facts.json').is_file():
+    print(store)
 PY
 )"
     export HERMES_RUNTIME_DIR
   fi
+  skip=''
+  [ -n "$HERMES_RUNTIME_DIR" ] || skip='this hermes does not report its runtime; set HERMES_RUNTIME_DIR to run it'
+fi
+if [ -n "$skip" ]; then
+  echo "skipped the Hermes plugin install check: $skip"
+else
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' EXIT
+  repo="$tmp/repo"
+  home="$tmp/home"
+  export SRC_ROOT="$(pwd)"
+  export TEST_REPO="$repo"
   python - <<'PY'
 import os
 import shutil
@@ -50,7 +63,7 @@ PY
   HERMES_HOME="$home" hermes plugins install "file://$repo" --force >/dev/null
   HERMES_HOME="$home" hermes plugins enable antigravity-provider >/dev/null
   HERMES_HOME="$home" hermes agy status >/dev/null
-  if [ "$(hermes --print-runtime-command)" != "$launch" ]; then
+  if [ -n "$launch" ] && [ "$(hermes --print-runtime-command)" != "$launch" ]; then
     echo "hermes launcher changed during the check; it was: $launch" >&2
     exit 1
   fi
