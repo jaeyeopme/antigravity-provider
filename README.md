@@ -165,10 +165,13 @@ scripts/validate_hermes.sh
 ```
 
 `scripts/validate_hermes.sh` also installs the checkout as a Hermes directory
-plugin when `hermes` and `git` are available. With Hermes importable,
-`python scripts/e2e_hermes.py` runs a real Hermes agent turn, including a tool
-call, against a local fake backend. Run it before merging a code pull request and after Hermes
-upgrades.
+plugin when `hermes` and `git` are available. `python scripts/run_in_hermes.py
+scripts/e2e_hermes.py` runs a real Hermes agent turn, including a tool call,
+against a local fake backend, with the installed `hermes`' own Python.
+
+CI runs both against a fresh Hermes install on Linux and Windows for every pull
+request, so they need not touch your own Hermes. Run them locally after a
+Hermes upgrade to check your setup.
 
 `hermes plugins install` and `update` take the latest commit on `main`, so a
 merge to `main` is a release. The repository is kept that way:
