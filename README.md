@@ -164,7 +164,7 @@ python -m unittest discover -v
 scripts/validate_hermes.sh
 ```
 
-`scripts/validate_hermes.sh` also installs the checkout as a Hermes directory
+`scripts/validate_hermes.sh` installs the checkout as a Hermes directory
 plugin when `hermes` and `git` are available. `python scripts/run_in_hermes.py
 scripts/e2e_hermes.py` runs a real Hermes agent turn, including a tool call,
 against a local fake backend, with the installed `hermes`' own Python.

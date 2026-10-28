@@ -1,8 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-PYTHONPATH="${PWD}/src${PYTHONPATH:+:$PYTHONPATH}" python -m unittest discover -v
-
 # Real Hermes directory-plugin install check. This catches the root plugin.yaml
 # + __init__.py shim path used by `hermes plugins install <repo> --enable`.
 # A temp HERMES_HOME makes Hermes build its runtime under it and repoint the
