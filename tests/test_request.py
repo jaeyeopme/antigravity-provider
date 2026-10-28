@@ -59,6 +59,18 @@ class RequestTests(unittest.TestCase):
         self.assertNotIn("additionalProperties", tools[0]["functionDeclarations"][0]["parameters"])
         self.assertEqual(body["request"]["toolConfig"]["functionCallingConfig"]["mode"], "VALIDATED")
 
+    def test_tool_choice_controls_the_function_calling_mode(self):
+        tools = [{"type": "function", "function": {"name": "f", "parameters": {"type": "object", "properties": {}}}}]
+        cases = [
+            ("none", {"mode": "NONE"}),
+            ("required", {"mode": "ANY"}),
+            ("auto", {"mode": "VALIDATED"}),
+            ({"type": "function", "function": {"name": "f"}}, {"mode": "ANY", "allowedFunctionNames": ["f"]}),
+        ]
+        for choice, expected in cases:
+            body = build(model="gemini-3.1-pro", messages=[{"role": "user", "content": "x"}], tools=tools, tool_choice=choice)
+            self.assertEqual(body["request"]["toolConfig"]["functionCallingConfig"], expected, choice)
+
     def test_gemini_38_flash_tiered_wire_routing(self):
         for effort, expected_budget in [("high", -1), ("medium", 4000), ("low", 1000)]:
             body = build(

@@ -3,6 +3,7 @@ import io
 import re
 import sys
 import tempfile
+import time
 import types
 import unittest
 from pathlib import Path
@@ -94,6 +95,18 @@ class SelectModelTests(unittest.TestCase):
         # Discovery failed: the built-in list is not the account's, so its default may not exist.
         with self.assertRaises(SystemExit):
             self.select(None, fallback_catalog())
+
+
+class StatusTests(unittest.TestCase):
+    def test_status_shows_source_expiry_project_and_account(self):
+        described = {"source": "browser OAuth", "has_access_token": True, "has_refresh_token": True,
+                     "expires_at": time.time() - 60, "project_id": "proj-1", "email": "me@example.com"}
+        service = SimpleNamespace(credentials=SimpleNamespace(describe=lambda: described))
+        with patch.object(plugin, "default_service", return_value=service), \
+                patch("sys.stdout", new_callable=io.StringIO) as out:
+            self.assertIsNone(plugin._handle_cli(SimpleNamespace(antigravity_command="status")))
+        for line in ("credentials: browser OAuth", "(expired)", "project: proj-1", "account: me@example.com"):
+            self.assertIn(line, out.getvalue())
 
 
 class CliErrorTests(unittest.TestCase):

@@ -48,6 +48,11 @@ class CompletionTests(unittest.TestCase):
         self.assertEqual(raised.exception.status, 502)
         self.assertIn("MALFORMED_FUNCTION_CALL", raised.exception.message)
 
+    def test_max_tokens_finish_maps_to_length(self):
+        cut = candidate([{"text": "cut"}], "MAX_TOKENS")
+        self.assertEqual(to_openai_completion("gemini-3.1-pro", cut)["choices"][0]["finish_reason"], "length")
+        self.assertEqual(list(to_openai_stream_chunks("gemini-3.1-pro", [cut]))[-1]["choices"][0]["finish_reason"], "length")
+
     def test_safety_finish_maps_to_content_filter(self):
         out = to_openai_completion("gemini-3.1-pro", candidate([{"text": "partial"}], "SAFETY"))
         self.assertEqual(out["choices"][0]["finish_reason"], "content_filter")
