@@ -73,6 +73,15 @@ class CurrentCredentialTests(unittest.TestCase):
         self.assertEqual(h.refreshes, ["ref"])
         self.assertIsNone(h.store.load())
 
+    def test_unreadable_keychain_is_read_again_on_the_next_request(self):
+        h = Harness(self.tmp.name)  # e.g. the Keychain was locked when Hermes started
+        with self.assertRaises(AntigravityError):
+            h.manager.current()
+        h.keychain = fresh(access_token="unlocked")
+        self.assertEqual(h.manager.current().access_token, "unlocked")
+        h.manager.current()
+        self.assertEqual(h.keychain_loads, 2)
+
     def test_missing_credentials_is_a_401(self):
         h = Harness(self.tmp.name)
         with self.assertRaises(AntigravityError) as raised:

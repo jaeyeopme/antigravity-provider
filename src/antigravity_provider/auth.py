@@ -57,7 +57,8 @@ class CredentialManager:
         with self._lock:
             if not self._keychain_loaded:
                 self._keychain = self._keychain_loader()
-                self._keychain_loaded = True
+                # A locked or unreadable Keychain is read again on the next request.
+                self._keychain_loaded = self._keychain is not None
             if self._keychain is None or not self._keychain.usable:
                 raise AntigravityError(
                     "Missing Antigravity credentials. Run `hermes agy login`.",
