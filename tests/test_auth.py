@@ -187,6 +187,15 @@ class LoginTests(unittest.TestCase):
         self.assertIsNone(h.store.load())
         self.assertEqual(h.manager.current().access_token, "tok")
 
+    def test_login_falls_back_to_browser_when_the_keychain_credential_fails(self):
+        h = Harness(self.tmp.name, keychain=fresh(expires_at=1))
+        h.manager._refresh_tokens = revoked
+        tokens = fresh(access_token="browser")
+        with patch.object(oauth, "browser_login", return_value=tokens), patch("sys.stderr"):
+            creds = h.manager.login(open_browser=False)
+        self.assertEqual((creds.access_token, creds.source), ("browser", SOURCE_BROWSER))
+        self.assertEqual(h.store.load().access_token, "browser")
+
     def test_no_keychain_login_saves_browser_credentials(self):
         h = Harness(self.tmp.name, keychain=fresh())
         tokens = {"access_token": "browser", "refresh_token": "b-ref", "expires_at": time.time() + 3600}

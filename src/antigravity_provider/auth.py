@@ -7,6 +7,7 @@ Keychain credential is used; it is read once per process and its refreshed token
 
 from __future__ import annotations
 
+import sys
 import threading
 from dataclasses import replace
 from typing import Any, Callable
@@ -121,11 +122,15 @@ class CredentialManager:
         if use_keychain:
             keychain = self._keychain_loader()
             if keychain is not None and keychain.usable:
-                prepared = self._with_email(self._prepare(keychain))
-                store.delete()
-                with self._lock:
-                    self._keychain, self._keychain_loaded = prepared, True
-                return prepared
+                try:
+                    prepared = self._with_email(self._prepare(keychain))
+                except AntigravityError as exc:
+                    print(f"The agy Keychain credential did not work ({exc.message}); using browser sign-in.", file=sys.stderr)
+                else:
+                    store.delete()
+                    with self._lock:
+                        self._keychain, self._keychain_loaded = prepared, True
+                    return prepared
 
         tokens = oauth.browser_login(open_browser=open_browser, timeout=timeout)
         credentials = Credentials.from_mapping(tokens, source=SOURCE_BROWSER)

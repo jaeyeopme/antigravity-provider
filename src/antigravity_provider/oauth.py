@@ -136,10 +136,10 @@ def fetch_user_email(access_token: str) -> str | None:
 
 def callback_redirect_uri() -> str:
     host = os.getenv("ANTIGRAVITY_OAUTH_REDIRECT_HOST", CALLBACK_HOST)
-    return f"http://{host}:{_callback_port()}{CALLBACK_PATH}"
+    return f"http://{host}:{callback_port()}{CALLBACK_PATH}"
 
 
-def _callback_port() -> int:
+def callback_port() -> int:
     return int(os.getenv("ANTIGRAVITY_OAUTH_PORT", str(CALLBACK_PORT)))
 
 
@@ -216,7 +216,7 @@ def browser_login(*, open_browser: bool = True, timeout: int = 300) -> dict[str,
     redirect_uri = callback_redirect_uri()
     auth_url, verifier = build_auth_url(state, redirect_uri)
     bind_host = os.getenv("ANTIGRAVITY_OAUTH_BIND_HOST", CALLBACK_HOST)
-    server = _CallbackServer((bind_host, _callback_port()), state)
+    server = _CallbackServer((bind_host, callback_port()), state)
     server.timeout = 1
     try:
         print("Open this URL to authorize Antigravity:", file=sys.stderr)

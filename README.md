@@ -71,7 +71,8 @@ Without a reasoning level, requests use `low`. `xhigh` and `max` act as `high`.
 
 | Symptom | Fix |
 | --- | --- |
-| `Missing Antigravity credentials` | Run `hermes agy login`. If the `agy` credential is stale, use `hermes agy login --no-keychain`. |
+| `Missing Antigravity credentials` | Run `hermes agy login`. If the `agy` credential no longer works, it falls back to browser sign-in. |
+| `Antigravity sign-in expired or was revoked` | Run `hermes agy login`. With the `agy` credential, sign in to `agy` again first. |
 | A newly launched model is missing from the picker | The catalog refreshes every four hours. Until then, use it directly with `/model <model-id>` or `hermes agy select <model-id>`. |
 | Sign-in fails because port 51121 is busy | `ANTIGRAVITY_OAUTH_PORT=51122 hermes agy login --no-keychain` |
 | Requests start failing after an Antigravity update | Set `ANTIGRAVITY_CLIENT_VERSION` to the current `agy` version. |
