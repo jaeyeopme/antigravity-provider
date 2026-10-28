@@ -53,11 +53,15 @@ class CredentialStoreTests(unittest.TestCase):
 
     def test_round_trip_credentials(self):
         with tempfile.TemporaryDirectory() as d:
+            # The file's folder is the Hermes home, which may be shared on purpose: leave its mode alone.
+            os.chmod(d, 0o755)
             store = CredentialStore(Path(d) / "credentials.json")
             store.save(Credentials(access_token="a", refresh_token="r", project_id="p", expires_at=123))
             loaded = store.load()
             self.assertEqual(loaded.project_id, "p")
             self.assertEqual(loaded.source, SOURCE_BROWSER)
+            if os.name != "nt":
+                self.assertEqual(os.stat(d).st_mode & 0o777, 0o755)
             self.assertPrivate(store.path)
             self.assertNotIn("source", json.loads(store.path.read_text()))
             store.delete()
