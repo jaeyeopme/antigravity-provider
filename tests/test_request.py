@@ -1,7 +1,19 @@
 import unittest
 
+from antigravity_provider.catalog import build_catalog
 from antigravity_provider.request import ChatRequest, parse_chat_request, SKIP_THOUGHT_SIGNATURE, build_generate_content_request
 from antigravity_provider.models import normalize_model_id
+
+# One model of each shape the request builder treats differently. Routing rules themselves are
+# tested in test_catalog; these tests check what ends up in the request body.
+CATALOG = build_catalog({
+    "models": {
+        "gemini-3.1-pro-low": {"model": "M_PRO_LOW", "maxOutputTokens": 65535, "supportsThinking": True, "thinkingBudget": 1001},
+        "gemini-3.8-flash-tiered": {"model": "M_FLASH_TIERED", "maxOutputTokens": 65536, "supportsThinking": True, "thinkingBudget": -1},
+        "claude-sonnet-4-6": {"maxOutputTokens": 64000, "supportsThinking": True, "thinkingBudget": 1024},
+        "gpt-oss-120b-medium": {"model": "M_GPT_OSS", "maxOutputTokens": 32768, "supportsThinking": True, "thinkingBudget": 8192, "usedNonGeminiModel": True},
+    },
+})
 
 
 def build(*, model, messages, project_id="p", tools=None, reasoning_effort=None, session_id=None, tool_choice=None, max_tokens=None):
@@ -13,7 +25,7 @@ def build(*, model, messages, project_id="p", tools=None, reasoning_effort=None,
         reasoning_effort=reasoning_effort,
         max_tokens=max_tokens,
     )
-    return build_generate_content_request(request, project_id=project_id, session_id=session_id)
+    return build_generate_content_request(request, project_id=project_id, session_id=session_id, catalog=CATALOG)
 
 
 class RequestTests(unittest.TestCase):
@@ -80,28 +92,8 @@ class RequestTests(unittest.TestCase):
                 reasoning_effort=effort,
             )
             self.assertEqual(body["model"], "gemini-3.8-flash-tiered")
-            self.assertEqual(body["request"]["labels"]["model_enum"], "MODEL_PLACEHOLDER_M322")
+            self.assertEqual(body["request"]["labels"]["model_enum"], "M_FLASH_TIERED")
             self.assertEqual(body["request"]["generationConfig"]["thinkingConfig"]["thinkingBudget"], expected_budget)
-
-    def test_gemini_37_flash_tiered_wire_routing(self):
-        body = build(
-            model="google-antigravity/gemini-3.7-flash",
-            project_id="p",
-            messages=[{"role": "user", "content": "ping"}],
-            reasoning_effort="high",
-        )
-        self.assertEqual(body["model"], "gemini-3.7-flash-tiered")
-        self.assertEqual(body["request"]["labels"]["model_enum"], "MODEL_PLACEHOLDER_M301")
-
-    def test_gemini_36_flash_wire_routing(self):
-        body = build(
-            model="google-antigravity/gemini-3.6-flash",
-            project_id="p",
-            messages=[{"role": "user", "content": "ping"}],
-            reasoning_effort="high",
-        )
-        self.assertEqual(body["model"], "gemini-3.6-flash-high")
-        self.assertEqual(body["request"]["labels"]["model_enum"], "MODEL_PLACEHOLDER_M71")
 
     def test_gpt_oss_120b_maps_to_medium_wire_model_and_labels(self):
         body = build(
@@ -112,7 +104,7 @@ class RequestTests(unittest.TestCase):
         )
         self.assertEqual(body["model"], "gpt-oss-120b-medium")
         self.assertEqual(body["request"]["generationConfig"]["thinkingConfig"]["thinkingBudget"], 8192)
-        self.assertEqual(body["request"]["labels"]["model_enum"], "MODEL_OPENAI_GPT_OSS_120B_MEDIUM")
+        self.assertEqual(body["request"]["labels"]["model_enum"], "M_GPT_OSS")
         self.assertEqual(body["request"]["labels"]["used_non_gemini_model"], "true")
 
     def test_claude_labels_set_correctly(self):
