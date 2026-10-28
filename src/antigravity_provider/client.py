@@ -68,7 +68,10 @@ def _stream_event_error(event: dict[str, Any]) -> AntigravityError | None:
     if not error:
         return None
     error = error if isinstance(error, dict) else {"message": str(error)}
-    code = int(error.get("code") or 500)
+    try:
+        code = int(error.get("code") or 500)
+    except (TypeError, ValueError):
+        code = 500  # a text code such as "RESOURCE_EXHAUSTED"
     if code == 401:
         return TokenExpired()
     return AntigravityError(error.get("message") or "Antigravity stream error", status=code)
