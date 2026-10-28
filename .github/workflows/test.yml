@@ -33,7 +33,11 @@ jobs:
       - run: curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash -s -- --non-interactive --skip-browser --skip-computer-use
       - run: echo "$HOME/.local/bin" >> "$GITHUB_PATH"
       - run: hermes --version
-      - run: scripts/validate_hermes.sh
+      # The script skips the install check when Hermes cannot report its runtime; here that must fail.
+      - run: |
+          set -o pipefail
+          scripts/validate_hermes.sh | tee validate.log
+          grep -q 'directory plugin install and CLI registration ok' validate.log
       - name: e2e_hermes.py
         run: |
           python3_hermes="$(ls -d "$HOME"/.hermes/tools/python-*/bin/python3 | head -1)"
