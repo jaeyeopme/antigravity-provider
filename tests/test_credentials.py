@@ -1,6 +1,7 @@
 import base64
 import json
 import os
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -76,6 +77,20 @@ class KeychainTests(unittest.TestCase):
         self.assertEqual(parsed.source, SOURCE_KEYCHAIN)
         self.assertEqual((parsed.access_token, parsed.refresh_token), ("a", "r"))
         self.assertIsInstance(parsed.expires_at, float)
+
+    def test_reads_the_agy_item_with_the_security_tool_on_macos(self):
+        secret = json.dumps({"token": {"access_token": "a", "refresh_token": "r"}}).encode()
+        with patch.object(sys, "platform", "darwin"), \
+                patch("antigravity_provider.credentials.subprocess.check_output", return_value=secret) as run:
+            creds = load_agy_keychain_credentials()
+        self.assertEqual((creds.access_token, creds.refresh_token), ("a", "r"))
+        self.assertEqual(run.call_args.args[0], ["security", "find-generic-password", "-a", "antigravity", "-s", "gemini", "-w"])
+
+    def test_no_keychain_outside_macos(self):
+        with patch.object(sys, "platform", "linux"), \
+                patch("antigravity_provider.credentials.subprocess.check_output") as run:
+            self.assertIsNone(load_agy_keychain_credentials())
+        run.assert_not_called()
 
     def test_unreadable_keychain_is_no_credential(self):
         self.assertIsNone(load_agy_keychain_credentials(runner=lambda: "not-json"))
