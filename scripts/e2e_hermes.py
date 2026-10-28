@@ -2,9 +2,9 @@
 
 Checks the parts unit tests cannot: Hermes builds our client through ProviderProfile.create_client,
 streams through it, executes the tool call, and replays the tool call's thought signature on the
-next turn. Run it with the Python that has Hermes installed:
+next turn. Run it with the installed hermes' Python:
 
-    python scripts/e2e_hermes.py
+    python scripts/run_in_hermes.py scripts/e2e_hermes.py
 """
 
 from __future__ import annotations
