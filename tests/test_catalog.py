@@ -176,6 +176,21 @@ class CatalogTests(unittest.TestCase):
         self.assertEqual(route.wire_model, "gemini-3.6-flash-high")
         self.assertEqual(route.model_enum, "MODEL_HIGH")
 
+    def test_current_catalog_is_kept_per_hermes_home(self):
+        # A gateway serves two profiles in one process; the hot path must answer from each one's own account.
+        with tempfile.TemporaryDirectory() as directory:
+            home = [Path(directory) / "a"]
+            manager = CatalogManager(path=lambda: home[0] / "catalog.json")
+            first = manager.get(project_id="project-a", fetch=Fetch(CATALOG_PAYLOAD))
+            home[0] = Path(directory) / "b"
+            second = manager.get(project_id="project-b", fetch=Fetch({"models": {"claude-sonnet-4-6": {}}}))
+            self.assertNotEqual(first.model_ids(), second.model_ids())
+            self.assertIs(manager.current(), second)
+            home[0] = Path(directory) / "a"
+            self.assertIs(manager.current(), first)
+            home[0] = Path(directory) / "c"
+            self.assertIs(manager.current(), fallback_catalog())
+
     def test_expired_last_known_good_survives_refresh_failure(self):
         with tempfile.TemporaryDirectory() as directory:
             now = [1000.0]

@@ -61,6 +61,17 @@ class HermesClientTests(unittest.TestCase):
         self.assertEqual(response.choices[0].message.content, "pong")
         self.assertEqual(chunks[0].choices[0].delta.content, "pong")
 
+    def test_deferred_completion_runs_the_request_once(self):
+        async def exercise():
+            service = FakeService()
+            result = create(HermesAntigravityClient(service=service))
+            result.choices  # attribute access on the loop thread
+            await result
+            result.usage
+            return service.calls
+
+        self.assertEqual(len(asyncio.run(exercise())), 1)
+
     def test_sync_streaming(self):
         stream = create(HermesAntigravityClient(service=FakeService()), stream=True)
         self.assertEqual([c.choices[0].delta.content for c in stream], ["pong"])

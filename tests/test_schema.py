@@ -29,6 +29,15 @@ class SchemaTests(unittest.TestCase):
         })
         self.assertEqual(out["properties"], {"a": {"description": "kept"}, "b": {}})
 
+    def test_null_branch_or_type_becomes_nullable(self):
+        # A tool that takes null to mean "clear this field" must still be offered null.
+        out = to_gemini_schema({
+            "type": "object",
+            "properties": {"a": {"type": ["string", "null"]}, "b": {"anyOf": [{"type": "integer"}, {"type": "null"}]}},
+        })
+        self.assertEqual(out["properties"]["a"], {"type": "string", "nullable": True})
+        self.assertEqual(out["properties"]["b"], {"type": "integer", "nullable": True})
+
     def test_all_of_merges_branches(self):
         # Pydantic v1 wraps a described model reference in allOf.
         out = to_gemini_schema({
@@ -55,9 +64,6 @@ class SchemaTests(unittest.TestCase):
         })
         self.assertEqual(out["properties"], {name: {"type": "string"} for name in names})
         self.assertEqual(out["required"], names)
-
-    def test_collapses_nullable_union(self):
-        self.assertEqual(to_gemini_schema({"anyOf": [{"type": "string"}, {"type": "null"}]}), {"type": "string"})
 
     def test_widens_discriminated_object_union_without_dropping_branches(self):
         out = to_gemini_schema({

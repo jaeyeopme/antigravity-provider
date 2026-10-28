@@ -87,6 +87,11 @@ class StreamTests(unittest.TestCase):
         with self.assertRaisesRegex(AntigravityError, "quota"):
             self.stream(lambda request, timeout: Response([line, b"\n"]), endpoints=("https://only",))
 
+    def test_in_stream_401_event_is_token_expired(self):
+        line = b'data: {"error":{"code":401,"message":"expired"}}\n'
+        with self.assertRaises(TokenExpired):
+            self.stream(lambda request, timeout: Response([line, b"\n"]), endpoints=("https://only",))
+
     def test_in_stream_error_with_a_text_code_keeps_the_message(self):
         line = b'data: {"error":{"code":"RESOURCE_EXHAUSTED","message":"quota exceeded"}}\n'
         with self.assertRaisesRegex(AntigravityError, "quota exceeded"):

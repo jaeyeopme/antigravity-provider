@@ -25,7 +25,7 @@ def to_gemini_schema(schema: Any) -> dict[str, Any]:
     """Convert an OpenAI tool JSON Schema to the subset Cloud Code accepts.
 
     Local ``$ref``s are inlined (a recursive, remote, or missing one accepts any value), ``allOf``
-    branches merge into one schema, nullable unions collapse to their non-null branch, and other
+    branches merge into one schema, nullable unions collapse to their non-null branch (marked ``nullable``), and other
     ``anyOf``/``oneOf`` unions widen into one permissive schema (properties unioned, ``required``
     intersected, enums merged) because the backend rejects unions in function declarations.
     Fields outside the Gemini ``Schema`` are dropped (``const`` becomes a one-value ``enum``), enum
@@ -144,6 +144,8 @@ def to_gemini_schema(schema: Any) -> dict[str, Any]:
                     if not (isinstance(branch, dict) and branch.get("type") == "null")
                 ]
                 merged = cleaned[0] if len(cleaned) == 1 and isinstance(cleaned[0], dict) else widen(cleaned)
+                if len(cleaned) < len(branches):
+                    merged["nullable"] = True
                 siblings = {key: nested for key, nested in value.items() if key != union_key}
                 if siblings:
                     merged.update(clean(siblings, resolving))
@@ -155,6 +157,8 @@ def to_gemini_schema(schema: Any) -> dict[str, Any]:
                 value = {key: nested for key, nested in value.items() if key != "type"}
                 if len(non_null_types) == 1:
                     value["type"] = non_null_types[0]
+                if len(non_null_types) < len(raw_type):
+                    value["nullable"] = True
             if "const" in value and "enum" not in value:
                 value = {**value, "enum": [value["const"]]}
             cleaned_value: dict[str, Any] = {}

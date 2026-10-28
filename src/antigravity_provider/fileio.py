@@ -12,10 +12,6 @@ from typing import Any
 def write_private_json(path: Path, data: Any) -> None:
     """Atomically write JSON readable only by the current user."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        os.chmod(path.parent, 0o700)
-    except OSError:
-        pass
     fd, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=str(path.parent), text=True)
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as handle:

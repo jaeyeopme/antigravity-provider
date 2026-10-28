@@ -2,6 +2,13 @@
 
 Each version is the date its code reached `main` (`YYYY.M.D`), with `.1`, `.2`, ... for later merges the same day.
 
+## 2026.10.28.1
+
+- Keep "null allowed" on tool parameters as `nullable`. A parameter typed `["string", "null"]` or with a `null` union branch lost that, so the model could never pass null to a tool that uses it to clear a field.
+- Stop changing the Hermes home folder's permissions when saving the sign-in or the model cache. The folder is Hermes', and a home shared with another account on purpose lost that access.
+- Answer Hermes' no-network questions (output limit, side-task model) from the catalog of the active profile instead of the last one used. A gateway serving two accounts in one process could pick a model the other account does not list.
+- `hermes agy logout` also removes the provider registration the plugin wrote under `plugins/model-providers/`. Left behind after `hermes plugins remove`, Hermes warned about it at every start.
+
 ## 2026.10.28
 
 - Accept tools whose parameter schema has a recursive, remote, or missing `$ref`, or an empty union. One such MCP tool failed every request while it was loaded.
