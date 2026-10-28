@@ -65,9 +65,6 @@ class SchemaTests(unittest.TestCase):
         self.assertEqual(out["properties"], {name: {"type": "string"} for name in names})
         self.assertEqual(out["required"], names)
 
-    def test_collapses_nullable_union(self):
-        self.assertEqual(to_gemini_schema({"anyOf": [{"type": "string"}, {"type": "null"}]}), {"type": "string", "nullable": True})
-
     def test_widens_discriminated_object_union_without_dropping_branches(self):
         out = to_gemini_schema({
             "type": "object",

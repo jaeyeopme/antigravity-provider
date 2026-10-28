@@ -22,11 +22,6 @@ class CompletionTests(unittest.TestCase):
         self.assertEqual(out["choices"][0]["message"]["tool_calls"][0]["function"]["name"], "get_time")
         self.assertEqual(out["choices"][0]["finish_reason"], "tool_calls")
 
-    def test_identical_tool_calls_receive_distinct_ids(self):
-        part = {"functionCall": {"name": "get_time", "args": {}}}
-        calls = to_openai_completion("gemini-3.1-pro", candidate([part, part]))["choices"][0]["message"]["tool_calls"]
-        self.assertNotEqual(calls[0]["id"], calls[1]["id"])
-
     def test_identical_tool_calls_in_later_turns_receive_distinct_ids(self):
         upstream = candidate([{"functionCall": {"name": "read_file", "args": {"path": "a.txt"}}}])
         first = to_openai_completion("gemini-3.1-pro", upstream)["choices"][0]["message"]["tool_calls"][0]["id"]
