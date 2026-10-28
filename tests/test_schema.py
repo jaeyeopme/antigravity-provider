@@ -29,6 +29,20 @@ class SchemaTests(unittest.TestCase):
         })
         self.assertEqual(out["properties"], {"a": {"description": "kept"}, "b": {}})
 
+    def test_all_of_merges_branches(self):
+        # Pydantic v1 wraps a described model reference in allOf.
+        out = to_gemini_schema({
+            "type": "object",
+            "$defs": {"Point": {"type": "object", "properties": {"x": {"type": "number"}}, "required": ["x"]}},
+            "properties": {"at": {"allOf": [{"$ref": "#/$defs/Point"}, {"properties": {"y": {"type": "number"}}}], "description": "where"}},
+        })
+        self.assertEqual(out["properties"]["at"], {
+            "type": "object",
+            "properties": {"x": {"type": "number"}, "y": {"type": "number"}},
+            "required": ["x"],
+            "description": "where",
+        })
+
     def test_empty_union_accepts_any_value(self):
         self.assertEqual(to_gemini_schema({"type": "object", "properties": {"v": {"anyOf": []}}})["properties"]["v"], {})
 

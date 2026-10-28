@@ -24,8 +24,8 @@ def _enum_string(value: Any) -> str | None:
 def to_gemini_schema(schema: Any) -> dict[str, Any]:
     """Convert an OpenAI tool JSON Schema to the subset Cloud Code accepts.
 
-    Local ``$ref``s are inlined (a recursive, remote, or missing one accepts any value),
-    nullable unions collapse to their non-null branch, and other
+    Local ``$ref``s are inlined (a recursive, remote, or missing one accepts any value), ``allOf``
+    branches merge into one schema, nullable unions collapse to their non-null branch, and other
     ``anyOf``/``oneOf`` unions widen into one permissive schema (properties unioned, ``required``
     intersected, enums merged) because the backend rejects unions in function declarations.
     Fields outside the Gemini ``Schema`` are dropped (``const`` becomes a one-value ``enum``), enum
@@ -47,6 +47,23 @@ def to_gemini_schema(schema: Any) -> dict[str, Any]:
                 return None
             value = value[token]
         return value
+
+    def combine(branches: list[Any]) -> dict[str, Any]:
+        """``allOf``: one schema holding every branch's properties and requirements."""
+        out: dict[str, Any] = {}
+        for branch in branches:
+            if not isinstance(branch, dict):
+                continue
+            for key, nested in branch.items():
+                if key == "properties" and isinstance(nested, dict):
+                    out.setdefault("properties", {}).update(
+                        {name: prop for name, prop in nested.items() if name not in out["properties"]}
+                    )
+                elif key == "required" and isinstance(nested, list):
+                    out["required"] = list(dict.fromkeys([*out.get("required", []), *nested]))
+                else:
+                    out.setdefault(key, nested)
+        return out
 
     def widen(branches: list[Any]) -> dict[str, Any]:
         if not branches or not all(isinstance(branch, dict) for branch in branches):
@@ -112,6 +129,10 @@ def to_gemini_schema(schema: Any) -> dict[str, Any]:
                 if siblings:
                     resolved.update(clean(siblings, resolving))
                 return resolved
+
+            if isinstance(value.get("allOf"), list):
+                siblings = {key: nested for key, nested in value.items() if key != "allOf"}
+                return combine([*(clean(branch, resolving) for branch in value["allOf"]), clean(siblings, resolving)])
 
             union_key = "anyOf" if "anyOf" in value else ("oneOf" if "oneOf" in value else None)
             if union_key:
