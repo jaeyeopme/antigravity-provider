@@ -12,9 +12,25 @@ if command -v hermes >/dev/null 2>&1 && command -v git >/dev/null 2>&1; then
   home="$tmp/home"
   export SRC_ROOT="$(pwd)"
   export TEST_REPO="$repo"
-  # A HERMES_HOME outside ~/.hermes makes Hermes build its runtime under it and
-  # repoint the user's shared launchers there; pin the user's own runtime instead.
-  export HERMES_RUNTIME_DIR="${HERMES_RUNTIME_DIR:-$HOME/.hermes/tools}"
+  # A temp HERMES_HOME makes Hermes build its runtime under it and repoint the
+  # user's shared launchers there. Pin the runtime the user's launcher already
+  # runs (<store>/<python entry>/bin/python3), and check the launcher after.
+  launch="$(hermes --print-runtime-command)"
+  if [ -z "${HERMES_RUNTIME_DIR:-}" ]; then
+    HERMES_RUNTIME_DIR="$(LAUNCH="$launch" python - <<'PY'
+import json
+import os
+from pathlib import Path
+
+py = Path(json.loads(os.environ['LAUNCH'])[0])
+store = py.parent.parent.parent
+if py.parent.name != 'bin' or not (store / 'facts.json').is_file():
+    raise SystemExit(f'cannot find the Hermes runtime store from {py}')
+print(store)
+PY
+)"
+    export HERMES_RUNTIME_DIR
+  fi
   python - <<'PY'
 import os
 import shutil
@@ -22,7 +38,10 @@ from pathlib import Path
 
 src = Path(os.environ['SRC_ROOT'])
 dst = Path(os.environ['TEST_REPO'])
-ignore = shutil.ignore_patterns('.git', '.venv', 'venv', '__pycache__', '*.pyc', '.pytest_cache')
+ignore = shutil.ignore_patterns(
+    '.git', '.venv', 'venv', '__pycache__', '*.pyc', '.pytest_cache',
+    'build', 'dist', '*.egg-info', '.ruff_cache', '.mypy_cache',
+)
 shutil.copytree(src, dst, ignore=ignore)
 PY
   git -C "$repo" init -q
@@ -31,5 +50,9 @@ PY
   HERMES_HOME="$home" hermes plugins install "file://$repo" --force >/dev/null
   HERMES_HOME="$home" hermes plugins enable antigravity-provider >/dev/null
   HERMES_HOME="$home" hermes agy status >/dev/null
+  if [ "$(hermes --print-runtime-command)" != "$launch" ]; then
+    echo "hermes launcher changed during the check; it was: $launch" >&2
+    exit 1
+  fi
   echo 'directory plugin install and CLI registration ok'
 fi
