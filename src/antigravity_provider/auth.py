@@ -65,7 +65,7 @@ class CredentialManager:
                     status=401,
                     error_type="invalid_request_error",
                 )
-            self._keychain = self._prepare(self._keychain)
+            self._keychain = self._prepare_keychain(self._keychain)
             return self._keychain
 
     def refresh(self, rejected: Credentials) -> Credentials:
@@ -87,9 +87,21 @@ class CredentialManager:
             cached = self._keychain
             if cached is not None and cached.access_token and cached.access_token != rejected.access_token:
                 return cached  # another request already refreshed it
-            refreshed = rejected.with_tokens(self._refresh_tokens(rejected.refresh_token))
+            refreshed = self._prepare_keychain(replace(rejected, access_token=""))
             self._keychain = refreshed
             return refreshed
+
+    def _prepare_keychain(self, credentials: Credentials) -> Credentials:
+        """``_prepare`` for the Keychain credential; call with the lock held."""
+        try:
+            return self._prepare(credentials)
+        except AntigravityError:
+            # `agy` may have signed in again since this process read the Keychain, revoking the
+            # refresh token it read then.
+            reloaded = self._keychain_loader()
+            if reloaded is None or not reloaded.usable or reloaded.refresh_token == credentials.refresh_token:
+                raise
+            return self._prepare(reloaded)
 
     def _prepare(self, credentials: Credentials) -> Credentials:
         if credentials.needs_refresh():

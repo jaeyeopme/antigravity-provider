@@ -16,6 +16,10 @@ def fresh(**overrides):
     return values
 
 
+def revoked(refresh_token):
+    raise AntigravityError("Antigravity sign-in expired", status=401)
+
+
 class Harness:
     def __init__(self, directory, keychain=None):
         self.store = CredentialStore(Path(directory) / "oauth.json")
@@ -123,6 +127,29 @@ class RefreshAfterRejectionTests(unittest.TestCase):
         h = Harness(self.tmp.name, keychain=fresh())
         h.manager.refresh(h.manager.current())
         self.assertEqual(h.manager.current().access_token, "new-1")
+
+    def test_rejected_keychain_token_uses_a_new_agy_sign_in(self):
+        h = Harness(self.tmp.name, keychain=fresh(refresh_token="old"))
+        rejected = h.manager.current()
+        h.keychain = fresh(access_token="relogin", refresh_token="new")  # `agy` signed in again
+        h.manager._refresh_tokens = revoked
+        self.assertEqual(h.manager.refresh(rejected).access_token, "relogin")
+        self.assertEqual(h.manager.current().access_token, "relogin")
+
+    def test_expired_keychain_token_uses_a_new_agy_sign_in(self):
+        h = Harness(self.tmp.name, keychain=fresh(refresh_token="old"))
+        h.manager.current()
+        h.manager._keychain = Credentials.from_mapping(fresh(refresh_token="old", expires_at=1), source=SOURCE_KEYCHAIN)
+        h.keychain = fresh(access_token="relogin", refresh_token="new")
+        h.manager._refresh_tokens = revoked
+        self.assertEqual(h.manager.current().access_token, "relogin")
+
+    def test_failed_keychain_refresh_without_a_new_sign_in_still_fails(self):
+        h = Harness(self.tmp.name, keychain=fresh())
+        rejected = h.manager.current()
+        h.manager._refresh_tokens = revoked
+        with self.assertRaises(AntigravityError):
+            h.manager.refresh(rejected)
 
     def test_logout_during_request_does_not_bring_browser_login_back(self):
         h = Harness(self.tmp.name, keychain=fresh(access_token="keychain"))
