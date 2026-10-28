@@ -7,7 +7,8 @@ PYTHONPATH="${PWD}/src${PYTHONPATH:+:$PYTHONPATH}" python -m unittest discover -
 # + __init__.py shim path used by `hermes plugins install <repo> --enable`.
 # A temp HERMES_HOME makes Hermes build its runtime under it and repoint the
 # user's shared launchers there. Pin the runtime the user's launcher already
-# runs (<store>/<python entry>/bin/python3), and check the launcher after.
+# runs (<store>/<python entry>/bin/python3, or python.exe on Windows), and check
+# the launcher after.
 # Hermes builds without --print-runtime-command skip the check instead of
 # risking the user's install.
 launch=""
@@ -25,8 +26,8 @@ try:
     py = Path(json.loads(os.environ['LAUNCH'])[0])
 except (ValueError, TypeError, IndexError, KeyError):
     raise SystemExit(0)
-store = py.parent.parent.parent
-if py.parent.name == 'bin' and (store / 'facts.json').is_file():
+store = next((parent for parent in py.parents[1:3] if (parent / 'facts.json').is_file()), None)
+if store is not None:
     print(store)
 PY
 )"
@@ -40,9 +41,12 @@ if [ -n "$skip" ]; then
 else
   tmp="$(mktemp -d)"
   trap 'rm -rf "$tmp"' EXIT
+  # Git Bash on Windows: hermes and python take C:/... paths, not /tmp/...
+  src="$(pwd)"
+  if command -v cygpath >/dev/null 2>&1; then tmp="$(cygpath -m "$tmp")"; src="$(cygpath -m "$src")"; fi
   repo="$tmp/repo"
   home="$tmp/home"
-  export SRC_ROOT="$(pwd)"
+  export SRC_ROOT="$src"
   export TEST_REPO="$repo"
   python - <<'PY'
 import os
@@ -60,7 +64,7 @@ PY
   git -C "$repo" init -q
   git -C "$repo" add .
   git -C "$repo" -c user.name=Hermes -c user.email=hermes@example.invalid commit -q -m init
-  HERMES_HOME="$home" hermes plugins install "file://$repo" --force >/dev/null
+  HERMES_HOME="$home" hermes plugins install "file:///${repo#/}" --force >/dev/null
   HERMES_HOME="$home" hermes plugins enable antigravity-provider >/dev/null
   HERMES_HOME="$home" hermes agy status >/dev/null
   if [ -n "$launch" ] && [ "$(hermes --print-runtime-command)" != "$launch" ]; then

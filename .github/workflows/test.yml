@@ -24,27 +24,32 @@ jobs:
   # Installs a fresh Hermes on a throwaway runner, so the real plugin install and agent turn are
   # checked without touching anyone's own Hermes.
   hermes:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.14'
-      - run: curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash -s -- --non-interactive --skip-browser --skip-computer-use
-      - run: echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - if: runner.os != 'Windows'
+        run: |
+          curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash -s -- --non-interactive --skip-browser --skip-computer-use
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          & ([scriptblock]::Create((Invoke-RestMethod https://hermes-agent.nousresearch.com/install.ps1))) -NonInteractive -SkipBrowser -SkipComputerUse
+          "$env:LOCALAPPDATA\hermes\bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
       - run: hermes --version
       # The script skips the install check when Hermes cannot report its runtime; here that must fail.
       - run: |
           set -o pipefail
           scripts/validate_hermes.sh | tee validate.log
           grep -q 'directory plugin install and CLI registration ok' validate.log
-      - name: e2e_hermes.py
-        run: |
-          python3_hermes="$(ls -d "$HOME"/.hermes/tools/python-*/bin/python3 | head -1)"
-          "$python3_hermes" -I -c "
-          import runpy, sys
-          sys.path.insert(0, '$HOME/.hermes/hermes-agent')
-          import hermes_bootstrap
-          sys.argv = ['scripts/e2e_hermes.py']
-          runpy.run_path('scripts/e2e_hermes.py', run_name='__main__')
-          "
+      - run: python scripts/run_in_hermes.py scripts/e2e_hermes.py
