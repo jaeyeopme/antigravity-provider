@@ -41,11 +41,16 @@ jobs:
         run: |
           curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash -s -- --non-interactive --skip-browser --skip-computer-use
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      # The runner's C: drive is far slower than D: (actions/runner-images#8755), so Hermes and the
+      # temp files go on D:.
       - if: runner.os == 'Windows'
         shell: pwsh
         run: |
+          $env:HERMES_HOME = "D:\hermes"
+          $env:TEMP = $env:TMP = $env:RUNNER_TEMP
+          "HERMES_HOME=$env:HERMES_HOME", "TEMP=$env:TEMP", "TMP=$env:TMP" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           & ([scriptblock]::Create((Invoke-RestMethod https://hermes-agent.nousresearch.com/install.ps1))) -NonInteractive -SkipBrowser -SkipComputerUse
-          "$env:LOCALAPPDATA\hermes\bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+          "$env:HERMES_HOME\bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
       - run: hermes --version
       # The script skips the install check when Hermes cannot report its runtime; here that must fail.
       - run: |
