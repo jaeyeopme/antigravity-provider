@@ -11,7 +11,6 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from .catalog import ModelCatalog, ResolvedRoute, fallback_catalog
-from .errors import AntigravityError
 from .models import normalize_effort, normalize_model_id
 from .schema import to_gemini_schema
 
@@ -179,14 +178,7 @@ def _function_declarations(tools: list[dict[str, Any]]) -> list[dict[str, Any]] 
         fn = tool.get("function") or {}
         if not isinstance(fn, dict) or not fn.get("name"):
             continue
-        try:
-            parameters = to_gemini_schema(fn.get("parameters"))
-        except ValueError as exc:
-            raise AntigravityError(
-                f"Tool {fn['name']!r} has an unsupported parameter schema: {exc}",
-                status=400,
-                error_type="invalid_request_error",
-            ) from exc
+        parameters = to_gemini_schema(fn.get("parameters"))
         declarations.append({"name": fn["name"], "description": fn.get("description") or "", "parameters": parameters})
     return [{"functionDeclarations": declarations}] if declarations else None
 
