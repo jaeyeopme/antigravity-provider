@@ -11,11 +11,13 @@ Antigravity directly from inside Hermes.
 > This is an unofficial integration, not endorsed by Google. It reaches
 > Antigravity from outside Google's documented clients, so the Google account
 > you use may be restricted, suspended, or lose access. Consider a separate
-> account.
+> account. Sign-in goes through the Antigravity IDE's own OAuth client; if
+> Google retires that client, sign-in stops working until the plugin changes.
 
 ## Requirements
 
-- Hermes Agent with `ProviderProfile.create_client` support (verified on 0.21.5).
+- Hermes Agent 0.21.5 or newer (`ProviderProfile.create_client` support). CI
+  checks 0.21.6 and the latest release.
 - Python 3.11 or newer. The plugin uses only the standard library.
 - A Google account with Antigravity access.
 
@@ -37,6 +39,11 @@ hermes agy select
 To use a browser sign-in even when `agy` is available, run
 `hermes agy login --no-keychain`. On macOS, running plain `hermes agy login`
 again switches back to `agy` and removes the saved browser sign-in.
+
+Every merge to `main` is a release, and `hermes plugins update` takes it. To
+stay on one version, pass the commit a
+[`vYYYY.M.D` tag](https://github.com/jaeyeopme/antigravity-provider/tags)
+points to: `hermes plugins install jaeyeopme/antigravity-provider --ref <commit>`.
 
 `hermes agy select` makes Antigravity the default Hermes provider with your
 account's default model. Pass a model ID your account lists to choose another
@@ -160,8 +167,9 @@ All files live in the active Hermes home (`$HERMES_HOME`, per profile):
 ```bash
 python -m venv .venv
 . .venv/bin/activate
-python -m pip install -e .
-python -m unittest discover -v
+python -m pip install -e . ruff coverage
+ruff check . && ruff format --check .
+python -m coverage run -m unittest discover -v && python -m coverage report -m
 scripts/validate_hermes.sh
 ```
 
@@ -170,38 +178,11 @@ plugin when `hermes` and `git` are available. `python scripts/run_in_hermes.py
 scripts/e2e_hermes.py` runs a real Hermes agent turn, including a tool call,
 against a local fake backend, with the installed `hermes`' own Python.
 
-CI runs both against a fresh Hermes install on Linux and Windows for every pull
-request, so they need not touch your own Hermes. Run them locally after a
+CI runs all of this for every pull request, the Hermes checks against a fresh
+install of the oldest supported and the latest Hermes release on Linux and
+Windows, so they need not touch your own Hermes. Run them locally after a
 Hermes upgrade to check your setup.
 
-`hermes plugins install` and `update` take the latest commit on `main`, so a
-merge to `main` is a release. The repository is kept that way:
-
-- **Code** is anything that changes how the plugin behaves: `src/` and the root
-  `__init__.py`. Code changes go through one pull request per batch of work, one
-  commit per change, squash-merged once CI passes.
-- **Every code pull request sets the version to its merge date** in the same
-  pull request: `YYYY.M.D` without leading zeros (`2026.10.16`), with `.1`,
-  `.2`, ... for another code merge on the same day. It adds its section to
-  `CHANGELOG.md` headed `## YYYY.M.D`. The version lives in
-  `src/antigravity_provider/__init__.py` and `plugin.yaml`; a test keeps them
-  and the changelog in step.
-- **Everything else** (docs, tests, scripts, CI, descriptive metadata such as
-  the `plugin.yaml` description) goes straight to `main`, without a version bump
-  or changelog entry.
-- No tags or GitHub releases: Hermes does not use them.
-
-Modules in `src/antigravity_provider/`, from Hermes inward:
-
-| Module | Responsibility |
-| --- | --- |
-| `hermes_plugin.py` | Plugin entry point: `hermes agy` commands and the request middleware. |
-| `hermes_provider.py` | Registers the `antigravity` provider profile. Generated shims import it, so keep its path. |
-| `hermes_client.py` | OpenAI-client-shaped facade Hermes calls; sync and async, closable streams. |
-| `service.py` | One request end to end: credentials, model routing, 401 refresh and retry. |
-| `request.py`, `schema.py` | OpenAI request and tool schemas to the Cloud Code body. |
-| `response.py` | Cloud Code chunks to OpenAI completions and stream chunks. |
-| `client.py` | HTTP and SSE transport with endpoint fallback. |
-| `catalog.py` | Model discovery, routing, and the last-known-good cache. |
-| `auth.py`, `credentials.py`, `oauth.py`, `cloudcode.py` | Credential choice and refresh, storage and Keychain, Google OAuth, project onboarding. |
-| `models.py`, `errors.py`, `net.py`, `fileio.py`, `paths.py` | Model ID and effort normalization, error type, HTTP helpers, private file writes, Hermes home paths. |
+How a change reaches `main`, how versions and the changelog are kept, and what
+each module does: [CONTRIBUTING.md](CONTRIBUTING.md). Security reports:
+[SECURITY.md](SECURITY.md).
