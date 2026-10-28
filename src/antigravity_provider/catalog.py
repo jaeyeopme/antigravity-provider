@@ -322,7 +322,8 @@ class CatalogManager:
         self._refreshing: dict[str, threading.Lock] = {}
         self._entries: dict[str, _Entry] = {}
         self._failed_at: dict[str, float] = {}
-        self._current = fallback_catalog()
+        # One Hermes process may serve several profiles (gateway, Desktop serve); each home keeps its own.
+        self._current: dict[str, ModelCatalog] = {}
 
     @property
     def path(self) -> Path:
@@ -333,8 +334,8 @@ class CatalogManager:
         return hashlib.sha256(project_id.encode("utf-8")).hexdigest()
 
     def current(self) -> ModelCatalog:
-        """The most recently used catalog; never touches the network (for hot paths)."""
-        return self._current
+        """The catalog last used for the active Hermes home; never touches the network (for hot paths)."""
+        return self._current.get(str(self.path)) or fallback_catalog()
 
     def _load(self, project_key: str) -> _Entry | None:
         data = read_json(self.path)
@@ -363,7 +364,7 @@ class CatalogManager:
         return entry
 
     def _use(self, catalog: ModelCatalog) -> ModelCatalog:
-        self._current = catalog
+        self._current[str(self.path)] = catalog
         return catalog
 
     def get(
