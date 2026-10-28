@@ -52,7 +52,7 @@ class CredentialManager:
         if stored is not None:
             prepared = self._prepare(stored)
             if prepared != stored:
-                store.save(prepared)
+                self._save(store, prepared)
             return prepared
 
         with self._lock:
@@ -82,7 +82,7 @@ class CredentialManager:
             if latest.access_token and latest.access_token != rejected.access_token:
                 return latest
             refreshed = latest.with_tokens(self._refresh_tokens(latest.refresh_token))
-            store.save(refreshed)
+            self._save(store, refreshed)
             return refreshed
         with self._lock:
             cached = self._keychain
@@ -91,6 +91,13 @@ class CredentialManager:
             refreshed = self._prepare_keychain(replace(rejected, access_token=""))
             self._keychain = refreshed
             return refreshed
+
+    @staticmethod
+    def _save(store: CredentialStore, credentials: Credentials) -> None:
+        try:
+            store.save(credentials)
+        except OSError:
+            pass  # e.g. Windows while another Hermes process reads the file; the token works from memory
 
     def _prepare_keychain(self, credentials: Credentials) -> Credentials:
         """``_prepare`` for the Keychain credential; call with the lock held."""

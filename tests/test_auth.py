@@ -62,6 +62,13 @@ class CurrentCredentialTests(unittest.TestCase):
         self.assertEqual(h.manager.current().access_token, "new-1")
         self.assertEqual(h.store.load().refresh_token, "rotated")
 
+    def test_refreshed_token_is_used_even_if_saving_it_fails(self):
+        # Windows refuses to replace a file another Hermes process is reading.
+        h = Harness(self.tmp.name)
+        h.store.save(Credentials.from_mapping(fresh(expires_at=time.time() - 1), source=SOURCE_BROWSER))
+        with patch.object(h.store, "save", side_effect=PermissionError("in use")):
+            self.assertEqual(h.manager.current().access_token, "new-1")
+
     def test_keychain_project_and_token_are_cached_for_process(self):
         h = Harness(self.tmp.name, keychain=fresh(project_id=""))
         first = h.manager.current()
@@ -114,6 +121,13 @@ class RefreshAfterRejectionTests(unittest.TestCase):
         refreshed = h.manager.refresh(h.manager.current())
         self.assertEqual(refreshed.access_token, "new-1")
         self.assertEqual(h.store.load().access_token, "new-1")
+
+    def test_rejected_token_is_replaced_even_if_saving_it_fails(self):
+        h = Harness(self.tmp.name)
+        h.store.save(Credentials.from_mapping(fresh(), source=SOURCE_BROWSER))
+        rejected = h.manager.current()
+        with patch.object(h.store, "save", side_effect=PermissionError("in use")):
+            self.assertEqual(h.manager.refresh(rejected).access_token, "new-1")
 
     def test_token_refreshed_by_another_process_is_reused(self):
         h = Harness(self.tmp.name)
