@@ -1,7 +1,6 @@
 import unittest
 
 from antigravity_provider.request import ChatRequest, parse_chat_request, SKIP_THOUGHT_SIGNATURE, build_generate_content_request
-from antigravity_provider.errors import AntigravityError
 from antigravity_provider.models import normalize_model_id
 
 
@@ -226,12 +225,11 @@ class RequestTests(unittest.TestCase):
         request = parse_chat_request({"model": "m", "messages": [], "max_tokens": True})
         self.assertIsNone(request.max_tokens)
 
-    def test_unsupported_tool_schema_is_a_client_error_naming_the_tool(self):
-        tools = [{"type": "function", "function": {"name": "bad", "parameters": {"$ref": "https://x/schema"}}}]
-        with self.assertRaises(AntigravityError) as raised:
-            build(model="gemini-3.1-pro", messages=[{"role": "user", "content": "x"}], tools=tools)
-        self.assertEqual(raised.exception.status, 400)
-        self.assertIn("'bad'", raised.exception.message)
+    def test_tool_with_a_remote_schema_ref_still_sends_the_request(self):
+        tools = [{"type": "function", "function": {"name": "remote", "parameters": {"$ref": "https://x/schema"}}}]
+        body = build(model="gemini-3.1-pro", messages=[{"role": "user", "content": "x"}], tools=tools)
+        declaration = body["request"]["tools"][0]["functionDeclarations"][0]
+        self.assertEqual(declaration["parameters"], {"type": "object", "properties": {}})
 
     def test_parses_model_messages_and_reasoning(self):
         req = parse_chat_request({

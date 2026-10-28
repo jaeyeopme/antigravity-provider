@@ -68,15 +68,27 @@ def refresh_access_token(
     client: tuple[str, str] | None = None,
 ) -> dict[str, Any]:
     client_id, client_secret = client or oauth_client()
-    data = (post_form or _post_form)(
-        TOKEN_URL,
-        {
-            "client_id": client_id,
-            "client_secret": client_secret,
-            "refresh_token": refresh_token,
-            "grant_type": "refresh_token",
-        },
-    )
+    try:
+        data = (post_form or _post_form)(
+            TOKEN_URL,
+            {
+                "client_id": client_id,
+                "client_secret": client_secret,
+                "refresh_token": refresh_token,
+                "grant_type": "refresh_token",
+            },
+        )
+    except AntigravityError as exc:
+        # Google answers a revoked or expired refresh token (password change, removed access) with
+        # 400 invalid_grant; only a new sign-in fixes it.
+        if "invalid_grant" in exc.message:
+            raise AntigravityError(
+                "Antigravity sign-in expired or was revoked. Run `hermes agy login`"
+                " (sign in to `agy` again first if you use its Keychain credential).",
+                status=401,
+                error_type="invalid_request_error",
+            ) from exc
+        raise
     if not data.get("access_token"):
         raise AntigravityError(
             "OAuth refresh response did not include access_token", status=401, error_type="invalid_request_error"
@@ -124,10 +136,10 @@ def fetch_user_email(access_token: str) -> str | None:
 
 def callback_redirect_uri() -> str:
     host = os.getenv("ANTIGRAVITY_OAUTH_REDIRECT_HOST", CALLBACK_HOST)
-    return f"http://{host}:{_callback_port()}{CALLBACK_PATH}"
+    return f"http://{host}:{callback_port()}{CALLBACK_PATH}"
 
 
-def _callback_port() -> int:
+def callback_port() -> int:
     return int(os.getenv("ANTIGRAVITY_OAUTH_PORT", str(CALLBACK_PORT)))
 
 
@@ -204,7 +216,7 @@ def browser_login(*, open_browser: bool = True, timeout: int = 300) -> dict[str,
     redirect_uri = callback_redirect_uri()
     auth_url, verifier = build_auth_url(state, redirect_uri)
     bind_host = os.getenv("ANTIGRAVITY_OAUTH_BIND_HOST", CALLBACK_HOST)
-    server = _CallbackServer((bind_host, _callback_port()), state)
+    server = _CallbackServer((bind_host, callback_port()), state)
     server.timeout = 1
     try:
         print("Open this URL to authorize Antigravity:", file=sys.stderr)

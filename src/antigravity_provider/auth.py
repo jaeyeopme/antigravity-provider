@@ -7,6 +7,7 @@ Keychain credential is used; it is read once per process and its refreshed token
 
 from __future__ import annotations
 
+import sys
 import threading
 from dataclasses import replace
 from typing import Any, Callable
@@ -51,20 +52,21 @@ class CredentialManager:
         if stored is not None:
             prepared = self._prepare(stored)
             if prepared != stored:
-                store.save(prepared)
+                self._save(store, prepared)
             return prepared
 
         with self._lock:
             if not self._keychain_loaded:
                 self._keychain = self._keychain_loader()
-                self._keychain_loaded = True
+                # A locked or unreadable Keychain is read again on the next request.
+                self._keychain_loaded = self._keychain is not None
             if self._keychain is None or not self._keychain.usable:
                 raise AntigravityError(
                     "Missing Antigravity credentials. Run `hermes agy login`.",
                     status=401,
                     error_type="invalid_request_error",
                 )
-            self._keychain = self._prepare(self._keychain)
+            self._keychain = self._prepare_keychain(self._keychain)
             return self._keychain
 
     def refresh(self, rejected: Credentials) -> Credentials:
@@ -80,15 +82,34 @@ class CredentialManager:
             if latest.access_token and latest.access_token != rejected.access_token:
                 return latest
             refreshed = latest.with_tokens(self._refresh_tokens(latest.refresh_token))
-            store.save(refreshed)
+            self._save(store, refreshed)
             return refreshed
         with self._lock:
             cached = self._keychain
             if cached is not None and cached.access_token and cached.access_token != rejected.access_token:
                 return cached  # another request already refreshed it
-            refreshed = rejected.with_tokens(self._refresh_tokens(rejected.refresh_token))
+            refreshed = self._prepare_keychain(replace(rejected, access_token=""))
             self._keychain = refreshed
             return refreshed
+
+    @staticmethod
+    def _save(store: CredentialStore, credentials: Credentials) -> None:
+        try:
+            store.save(credentials)
+        except OSError:
+            pass  # e.g. Windows while another Hermes process reads the file; the token works from memory
+
+    def _prepare_keychain(self, credentials: Credentials) -> Credentials:
+        """``_prepare`` for the Keychain credential; call with the lock held."""
+        try:
+            return self._prepare(credentials)
+        except AntigravityError:
+            # `agy` may have signed in again since this process read the Keychain, revoking the
+            # refresh token it read then.
+            reloaded = self._keychain_loader()
+            if reloaded is None or not reloaded.usable or reloaded.refresh_token == credentials.refresh_token:
+                raise
+            return self._prepare(reloaded)
 
     def _prepare(self, credentials: Credentials) -> Credentials:
         if credentials.needs_refresh():
@@ -108,11 +129,15 @@ class CredentialManager:
         if use_keychain:
             keychain = self._keychain_loader()
             if keychain is not None and keychain.usable:
-                prepared = self._with_email(self._prepare(keychain))
-                store.delete()
-                with self._lock:
-                    self._keychain, self._keychain_loaded = prepared, True
-                return prepared
+                try:
+                    prepared = self._with_email(self._prepare(keychain))
+                except AntigravityError as exc:
+                    print(f"The agy Keychain credential did not work ({exc.message}); using browser sign-in.", file=sys.stderr)
+                else:
+                    store.delete()
+                    with self._lock:
+                        self._keychain, self._keychain_loaded = prepared, True
+                    return prepared
 
         tokens = oauth.browser_login(open_browser=open_browser, timeout=timeout)
         credentials = Credentials.from_mapping(tokens, source=SOURCE_BROWSER)

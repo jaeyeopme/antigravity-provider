@@ -36,6 +36,23 @@ class TokenTests(unittest.TestCase):
         refreshed = oauth.refresh_access_token("old-refresh", post_form=fake_post, client=("id", "secret"))
         self.assertEqual(refreshed["refresh_token"], "new-refresh")
 
+    def test_revoked_refresh_token_asks_for_a_new_sign_in(self):
+        def fake_post(url, form):
+            raise AntigravityError('OAuth token request failed (400): {"error": "invalid_grant"}', status=400)
+
+        with self.assertRaises(AntigravityError) as raised:
+            oauth.refresh_access_token("revoked", post_form=fake_post, client=("id", "secret"))
+        self.assertEqual(raised.exception.status, 401)
+        self.assertIn("hermes agy login", raised.exception.message)
+
+    def test_other_refresh_failures_pass_through(self):
+        def fake_post(url, form):
+            raise AntigravityError("OAuth token request failed: timed out", status=502)
+
+        with self.assertRaises(AntigravityError) as raised:
+            oauth.refresh_access_token("ref", post_form=fake_post, client=("id", "secret"))
+        self.assertEqual(raised.exception.status, 502)
+
     def test_code_exchange_requires_refresh_token(self):
         with self.assertRaisesRegex(AntigravityError, "No refresh token"):
             oauth.exchange_code_for_tokens(

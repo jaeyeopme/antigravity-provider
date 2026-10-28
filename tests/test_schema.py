@@ -14,6 +14,38 @@ class SchemaTests(unittest.TestCase):
         self.assertNotIn("$ref", out["properties"]["item"])
         self.assertNotIn("$defs", out)
 
+    def test_recursive_ref_accepts_any_value_instead_of_failing(self):
+        out = to_gemini_schema({
+            "type": "object",
+            "$defs": {"Node": {"type": "object", "properties": {"children": {"type": "array", "items": {"$ref": "#/$defs/Node"}}}}},
+            "properties": {"root": {"$ref": "#/$defs/Node"}},
+        })
+        self.assertEqual(out["properties"]["root"]["properties"]["children"], {"type": "array", "items": {}})
+
+    def test_missing_or_remote_ref_accepts_any_value(self):
+        out = to_gemini_schema({
+            "type": "object",
+            "properties": {"a": {"$ref": "#/$defs/Missing", "description": "kept"}, "b": {"$ref": "https://x/y.json"}},
+        })
+        self.assertEqual(out["properties"], {"a": {"description": "kept"}, "b": {}})
+
+    def test_all_of_merges_branches(self):
+        # Pydantic v1 wraps a described model reference in allOf.
+        out = to_gemini_schema({
+            "type": "object",
+            "$defs": {"Point": {"type": "object", "properties": {"x": {"type": "number"}}, "required": ["x"]}},
+            "properties": {"at": {"allOf": [{"$ref": "#/$defs/Point"}, {"properties": {"y": {"type": "number"}}}], "description": "where"}},
+        })
+        self.assertEqual(out["properties"]["at"], {
+            "type": "object",
+            "properties": {"x": {"type": "number"}, "y": {"type": "number"}},
+            "required": ["x"],
+            "description": "where",
+        })
+
+    def test_empty_union_accepts_any_value(self):
+        self.assertEqual(to_gemini_schema({"type": "object", "properties": {"v": {"anyOf": []}}})["properties"]["v"], {})
+
     def test_keeps_parameters_named_like_schema_keywords(self):
         names = ["definitions", "additionalProperties", "$schema", "anyOf", "oneOf", "$ref"]
         out = to_gemini_schema({

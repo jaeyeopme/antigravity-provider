@@ -2,6 +2,19 @@
 
 Each version is the date its code reached `main` (`YYYY.M.D`), with `.1`, `.2`, ... for later merges the same day.
 
+## 2026.10.28
+
+- Accept tools whose parameter schema has a recursive, remote, or missing `$ref`, or an empty union. One such MCP tool failed every request while it was loaded.
+- Merge `allOf` in tool schemas. A property wrapped in it (pydantic v1 does this) lost every field it referenced.
+- Read the `agy` Keychain again after a failed read. A Keychain that was locked when Hermes started left it reporting missing credentials until a restart.
+- Use a new `agy` sign-in when the old refresh token stops working, instead of failing until Hermes restarts.
+- A revoked or expired sign-in says to run `hermes agy login`; before, every request showed a raw `400 invalid_grant`.
+- `hermes agy login` failures print one line instead of a traceback; a busy sign-in port names `ANTIGRAVITY_OAUTH_PORT`; an `agy` credential that no longer works falls back to browser sign-in.
+- Ask both endpoints for the model list at the same time, so a slow network delays a catalog refresh by one timeout, not two.
+- Make the saved sign-in private on Windows. `chmod` does nothing there, so other accounts on the machine could read the tokens, for example with `HERMES_HOME` outside the user profile.
+- Keep using a refreshed token when saving it fails (Windows, while another Hermes process reads the file).
+- Keep the backend's message for a stream error with a text code such as `RESOURCE_EXHAUSTED`.
+
 ## 2026.10.16
 
 - `hermes agy select` refuses a model your account does not list and shows the ones it does. Before, it saved the name anyway and every request failed with 404; without a model and with model discovery failing, it saved `gemini-3.1-pro`.

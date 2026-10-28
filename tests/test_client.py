@@ -1,4 +1,6 @@
 import io
+import json
+import threading
 import unittest
 import urllib.error
 from unittest.mock import patch
@@ -23,6 +25,15 @@ class Response:
 
     def __iter__(self):
         yield from self.lines
+
+
+class Json(Response):
+    def __init__(self, data):
+        super().__init__([])
+        self.data = data
+
+    def read(self):
+        return json.dumps(self.data).encode("utf-8")
 
 
 def http_error(url, code, body=b""):
@@ -76,6 +87,11 @@ class StreamTests(unittest.TestCase):
         with self.assertRaisesRegex(AntigravityError, "quota"):
             self.stream(lambda request, timeout: Response([line, b"\n"]), endpoints=("https://only",))
 
+    def test_in_stream_error_with_a_text_code_keeps_the_message(self):
+        line = b'data: {"error":{"code":"RESOURCE_EXHAUSTED","message":"quota exceeded"}}\n'
+        with self.assertRaisesRegex(AntigravityError, "quota exceeded"):
+            self.stream(lambda request, timeout: Response([line, b"\n"]), endpoints=("https://only",))
+
     def test_closing_the_stream_closes_the_http_response(self):
         response = Response([PONG, b"\n", PONG, b"\n"])
         client = AntigravityClient(endpoints=["https://only"])
@@ -95,6 +111,23 @@ class ModelDiscoveryTests(unittest.TestCase):
         with patch("antigravity_provider.client.urllib.request.urlopen", fake_urlopen):
             with self.assertRaises(TokenExpired):
                 client.fetch_available_models(access_token="tok", project_id="p")
+
+    def test_endpoints_are_asked_at_the_same_time_and_the_first_still_wins(self):
+        both_waiting = threading.Barrier(2, timeout=2)
+        sandbox_answered = threading.Event()
+
+        def fake_urlopen(request, timeout):
+            both_waiting.wait()  # breaks unless both requests are in flight together
+            if "sandbox" in request.full_url:
+                sandbox_answered.set()
+                return Json({"defaultAgentModelId": "b", "models": {"y": {}}})
+            sandbox_answered.wait(2)  # the first endpoint answers last
+            return Json({"defaultAgentModelId": "a", "models": {"x": {}}})
+
+        client = AntigravityClient(endpoints=["https://daily", "https://sandbox"])
+        with patch("antigravity_provider.client.urllib.request.urlopen", fake_urlopen):
+            merged = client.fetch_available_models(access_token="tok", project_id="p")
+        self.assertEqual(merged, {"defaultAgentModelId": "a", "models": {"x": {}, "y": {}}})
 
     def test_mid_stream_connection_reset_is_a_provider_error(self):
         class Broken(Response):

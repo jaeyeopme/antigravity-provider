@@ -16,6 +16,10 @@ def fresh(**overrides):
     return values
 
 
+def revoked(refresh_token):
+    raise AntigravityError("Antigravity sign-in expired", status=401)
+
+
 class Harness:
     def __init__(self, directory, keychain=None):
         self.store = CredentialStore(Path(directory) / "oauth.json")
@@ -58,6 +62,13 @@ class CurrentCredentialTests(unittest.TestCase):
         self.assertEqual(h.manager.current().access_token, "new-1")
         self.assertEqual(h.store.load().refresh_token, "rotated")
 
+    def test_refreshed_token_is_used_even_if_saving_it_fails(self):
+        # Windows refuses to replace a file another Hermes process is reading.
+        h = Harness(self.tmp.name)
+        h.store.save(Credentials.from_mapping(fresh(expires_at=time.time() - 1), source=SOURCE_BROWSER))
+        with patch.object(h.store, "save", side_effect=PermissionError("in use")):
+            self.assertEqual(h.manager.current().access_token, "new-1")
+
     def test_keychain_project_and_token_are_cached_for_process(self):
         h = Harness(self.tmp.name, keychain=fresh(project_id=""))
         first = h.manager.current()
@@ -72,6 +83,15 @@ class CurrentCredentialTests(unittest.TestCase):
         self.assertEqual(h.manager.current().access_token, "new-1")
         self.assertEqual(h.refreshes, ["ref"])
         self.assertIsNone(h.store.load())
+
+    def test_unreadable_keychain_is_read_again_on_the_next_request(self):
+        h = Harness(self.tmp.name)  # e.g. the Keychain was locked when Hermes started
+        with self.assertRaises(AntigravityError):
+            h.manager.current()
+        h.keychain = fresh(access_token="unlocked")
+        self.assertEqual(h.manager.current().access_token, "unlocked")
+        h.manager.current()
+        self.assertEqual(h.keychain_loads, 2)
 
     def test_missing_credentials_is_a_401(self):
         h = Harness(self.tmp.name)
@@ -102,6 +122,13 @@ class RefreshAfterRejectionTests(unittest.TestCase):
         self.assertEqual(refreshed.access_token, "new-1")
         self.assertEqual(h.store.load().access_token, "new-1")
 
+    def test_rejected_token_is_replaced_even_if_saving_it_fails(self):
+        h = Harness(self.tmp.name)
+        h.store.save(Credentials.from_mapping(fresh(), source=SOURCE_BROWSER))
+        rejected = h.manager.current()
+        with patch.object(h.store, "save", side_effect=PermissionError("in use")):
+            self.assertEqual(h.manager.refresh(rejected).access_token, "new-1")
+
     def test_token_refreshed_by_another_process_is_reused(self):
         h = Harness(self.tmp.name)
         h.store.save(Credentials.from_mapping(fresh(), source=SOURCE_BROWSER))
@@ -114,6 +141,29 @@ class RefreshAfterRejectionTests(unittest.TestCase):
         h = Harness(self.tmp.name, keychain=fresh())
         h.manager.refresh(h.manager.current())
         self.assertEqual(h.manager.current().access_token, "new-1")
+
+    def test_rejected_keychain_token_uses_a_new_agy_sign_in(self):
+        h = Harness(self.tmp.name, keychain=fresh(refresh_token="old"))
+        rejected = h.manager.current()
+        h.keychain = fresh(access_token="relogin", refresh_token="new")  # `agy` signed in again
+        h.manager._refresh_tokens = revoked
+        self.assertEqual(h.manager.refresh(rejected).access_token, "relogin")
+        self.assertEqual(h.manager.current().access_token, "relogin")
+
+    def test_expired_keychain_token_uses_a_new_agy_sign_in(self):
+        h = Harness(self.tmp.name, keychain=fresh(refresh_token="old"))
+        h.manager.current()
+        h.manager._keychain = Credentials.from_mapping(fresh(refresh_token="old", expires_at=1), source=SOURCE_KEYCHAIN)
+        h.keychain = fresh(access_token="relogin", refresh_token="new")
+        h.manager._refresh_tokens = revoked
+        self.assertEqual(h.manager.current().access_token, "relogin")
+
+    def test_failed_keychain_refresh_without_a_new_sign_in_still_fails(self):
+        h = Harness(self.tmp.name, keychain=fresh())
+        rejected = h.manager.current()
+        h.manager._refresh_tokens = revoked
+        with self.assertRaises(AntigravityError):
+            h.manager.refresh(rejected)
 
     def test_logout_during_request_does_not_bring_browser_login_back(self):
         h = Harness(self.tmp.name, keychain=fresh(access_token="keychain"))
@@ -150,6 +200,15 @@ class LoginTests(unittest.TestCase):
         self.assertEqual((creds.source, creds.project_id, creds.email), (SOURCE_KEYCHAIN, "discovered", "user@example.com"))
         self.assertIsNone(h.store.load())
         self.assertEqual(h.manager.current().access_token, "tok")
+
+    def test_login_falls_back_to_browser_when_the_keychain_credential_fails(self):
+        h = Harness(self.tmp.name, keychain=fresh(expires_at=1))
+        h.manager._refresh_tokens = revoked
+        tokens = fresh(access_token="browser")
+        with patch.object(oauth, "browser_login", return_value=tokens), patch("sys.stderr"):
+            creds = h.manager.login(open_browser=False)
+        self.assertEqual((creds.access_token, creds.source), ("browser", SOURCE_BROWSER))
+        self.assertEqual(h.store.load().access_token, "browser")
 
     def test_no_keychain_login_saves_browser_credentials(self):
         h = Harness(self.tmp.name, keychain=fresh())

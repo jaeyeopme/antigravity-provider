@@ -24,7 +24,8 @@ def _enum_string(value: Any) -> str | None:
 def to_gemini_schema(schema: Any) -> dict[str, Any]:
     """Convert an OpenAI tool JSON Schema to the subset Cloud Code accepts.
 
-    Local ``$ref``s are inlined, nullable unions collapse to their non-null branch, and other
+    Local ``$ref``s are inlined (a recursive, remote, or missing one accepts any value), ``allOf``
+    branches merge into one schema, nullable unions collapse to their non-null branch, and other
     ``anyOf``/``oneOf`` unions widen into one permissive schema (properties unioned, ``required``
     intersected, enums merged) because the backend rejects unions in function declarations.
     Fields outside the Gemini ``Schema`` are dropped (``const`` becomes a one-value ``enum``), enum
@@ -36,15 +37,33 @@ def to_gemini_schema(schema: Any) -> dict[str, Any]:
     root = deepcopy(schema)
 
     def pointer(ref: str) -> Any:
+        """The local schema ``ref`` points to, or None for a remote or missing target."""
         if not ref.startswith("#/"):
-            raise ValueError(f"unsupported schema reference: {ref}")
+            return None
         value: Any = root
         for token in ref[2:].split("/"):
             token = token.replace("~1", "/").replace("~0", "~")
             if not isinstance(value, dict) or token not in value:
-                raise ValueError(f"unresolved schema reference: {ref}")
+                return None
             value = value[token]
         return value
+
+    def combine(branches: list[Any]) -> dict[str, Any]:
+        """``allOf``: one schema holding every branch's properties and requirements."""
+        out: dict[str, Any] = {}
+        for branch in branches:
+            if not isinstance(branch, dict):
+                continue
+            for key, nested in branch.items():
+                if key == "properties" and isinstance(nested, dict):
+                    out.setdefault("properties", {}).update(
+                        {name: prop for name, prop in nested.items() if name not in out["properties"]}
+                    )
+                elif key == "required" and isinstance(nested, list):
+                    out["required"] = list(dict.fromkeys([*out.get("required", []), *nested]))
+                else:
+                    out.setdefault(key, nested)
+        return out
 
     def widen(branches: list[Any]) -> dict[str, Any]:
         if not branches or not all(isinstance(branch, dict) for branch in branches):
@@ -100,21 +119,26 @@ def to_gemini_schema(schema: Any) -> dict[str, Any]:
         if isinstance(value, dict):
             if isinstance(value.get("$ref"), str):
                 ref = value["$ref"]
-                if ref in resolving:
-                    raise ValueError(f"cyclic schema reference: {ref}")
-                resolved = clean(deepcopy(pointer(ref)), resolving | {ref})
+                target = pointer(ref)
+                # A recursive, remote, or missing reference accepts any value there: failing would
+                # reject every request while the tool is loaded.
+                resolved = clean(deepcopy(target), resolving | {ref}) if ref not in resolving else {}
+                if not isinstance(resolved, dict):
+                    resolved = {}
                 siblings = {key: nested for key, nested in value.items() if key != "$ref"}
                 if siblings:
-                    if not isinstance(resolved, dict):
-                        raise ValueError(f"schema reference is not an object: {ref}")
                     resolved.update(clean(siblings, resolving))
                 return resolved
+
+            if isinstance(value.get("allOf"), list):
+                siblings = {key: nested for key, nested in value.items() if key != "allOf"}
+                return combine([*(clean(branch, resolving) for branch in value["allOf"]), clean(siblings, resolving)])
 
             union_key = "anyOf" if "anyOf" in value else ("oneOf" if "oneOf" in value else None)
             if union_key:
                 branches = value[union_key]
                 if not isinstance(branches, list) or not branches:
-                    raise ValueError("unsupported schema union: empty union")
+                    branches = [{}]
                 cleaned = [
                     clean(branch, resolving) for branch in branches
                     if not (isinstance(branch, dict) and branch.get("type") == "null")

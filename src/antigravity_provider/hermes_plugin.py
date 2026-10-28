@@ -3,14 +3,17 @@
 from __future__ import annotations
 
 import argparse
+import errno
+import sys
 import time
 from pathlib import Path
 from typing import Any
 
-from . import __version__
+from . import __version__, oauth
 from .hermes_provider import PLACEHOLDER_API_KEY, PLACEHOLDER_API_KEY_ENV, PROVIDER_BASE_URL, PROVIDER_NAME, register_provider_profile
 from .credentials import SOURCE_KEYCHAIN
 from .catalog import fallback_catalog
+from .errors import AntigravityError
 from .models import normalize_model_id, strip_provider_prefix
 from .paths import hermes_home
 from .service import default_service
@@ -125,7 +128,27 @@ def _status() -> None:
         print(f"account: {status['email']}")
 
 
-def _handle_cli(args: argparse.Namespace) -> None:
+def _handle_cli(args: argparse.Namespace) -> int | None:
+    """Run a `hermes agy` command; a failure prints one line and exits 1 instead of a traceback."""
+    try:
+        _run_cli(args)
+    except AntigravityError as exc:
+        print(f"Antigravity: {exc.message}", file=sys.stderr)
+        return 1
+    except OSError as exc:
+        if exc.errno == errno.EADDRINUSE:
+            print(
+                f"Antigravity: sign-in port {oauth.callback_port()} is in use. Pick another with ANTIGRAVITY_OAUTH_PORT, e.g."
+                " `ANTIGRAVITY_OAUTH_PORT=51122 hermes agy login --no-keychain`.",
+                file=sys.stderr,
+            )
+        else:
+            print(f"Antigravity: {exc}", file=sys.stderr)
+        return 1
+    return None
+
+
+def _run_cli(args: argparse.Namespace) -> None:
     command = getattr(args, "antigravity_command", None) or "status"
     credentials = default_service().credentials
     if command == "login":

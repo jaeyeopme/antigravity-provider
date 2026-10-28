@@ -1,3 +1,5 @@
+import errno
+import io
 import re
 import sys
 import tempfile
@@ -5,11 +7,12 @@ import types
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import antigravity_provider
 import antigravity_provider.hermes_plugin as plugin
 from antigravity_provider.catalog import build_catalog, fallback_catalog
+from antigravity_provider.errors import AntigravityError
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -88,6 +91,25 @@ class SelectModelTests(unittest.TestCase):
         # Discovery failed: the built-in list is not the account's, so its default may not exist.
         with self.assertRaises(SystemExit):
             self.select(None, fallback_catalog())
+
+
+class CliErrorTests(unittest.TestCase):
+    def run_cli(self, error):
+        args = SimpleNamespace(antigravity_command="logout")
+        service = SimpleNamespace(credentials=SimpleNamespace(logout=Mock(side_effect=error)))
+        with patch.object(plugin, "default_service", return_value=service), \
+                patch("sys.stderr", new_callable=io.StringIO) as err:
+            code = plugin._handle_cli(args)
+        return code, err.getvalue()
+
+    def test_provider_error_is_one_line_and_exit_1(self):
+        code, err = self.run_cli(AntigravityError("OAuth login timed out", status=401))
+        self.assertEqual((code, err), (1, "Antigravity: OAuth login timed out\n"))
+
+    def test_busy_sign_in_port_names_the_override(self):
+        code, err = self.run_cli(OSError(errno.EADDRINUSE, "Address already in use"))
+        self.assertEqual(code, 1)
+        self.assertIn("ANTIGRAVITY_OAUTH_PORT", err)
 
 
 if __name__ == "__main__":

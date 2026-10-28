@@ -1,6 +1,8 @@
 import base64
+import getpass
 import json
 import os
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -37,6 +39,17 @@ class CredentialsTests(unittest.TestCase):
 
 
 class CredentialStoreTests(unittest.TestCase):
+    def assertPrivate(self, path):
+        if os.name != "nt":
+            self.assertEqual(os.stat(path).st_mode & 0o777, 0o600)
+            return
+        # Windows ignores chmod; only the file's ACL decides who can read it.
+        listing = subprocess.run(["icacls", str(path)], capture_output=True, text=True, check=True).stdout
+        # Lines read "<path> DOMAIN\\user:(F)" then "<indent>BUILTIN\\Administrators:(I)(F)".
+        entries = [line[: line.index(":(")].rsplit(" ", 1)[-1] for line in listing.splitlines() if ":(" in line]
+        self.assertEqual(len(entries), 1, listing)
+        self.assertTrue(entries[0].lower().endswith(getpass.getuser().lower()), listing)
+
     def test_round_trip_credentials(self):
         with tempfile.TemporaryDirectory() as d:
             store = CredentialStore(Path(d) / "credentials.json")
@@ -44,7 +57,7 @@ class CredentialStoreTests(unittest.TestCase):
             loaded = store.load()
             self.assertEqual(loaded.project_id, "p")
             self.assertEqual(loaded.source, SOURCE_BROWSER)
-            self.assertEqual(os.stat(store.path).st_mode & 0o777, 0o600)
+            self.assertPrivate(store.path)
             self.assertNotIn("source", json.loads(store.path.read_text()))
             store.delete()
             self.assertIsNone(store.load())
