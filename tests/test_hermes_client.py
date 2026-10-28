@@ -1,6 +1,5 @@
 import asyncio
 import threading
-import time
 import unittest
 
 from antigravity_provider.errors import AntigravityError
@@ -92,46 +91,53 @@ class HermesClientTests(unittest.TestCase):
         self.assertIsNone(obj.choices[0].message.tool_calls)
 
 
-def slow_chunks(finalized, delay=0.5):
+def slow_chunks(finalized, reading, release):
     try:
         yield CHUNK
-        time.sleep(delay)  # upstream is slow to send the next chunk
+        reading.set()  # a reader is now inside the generator
+        release.wait(5)  # upstream is slow to send the next chunk
         yield CHUNK
         yield CHUNK
     finally:
         finalized.set()
 
 
+def events():
+    return threading.Event(), threading.Event(), threading.Event()
+
+
 class ChunkStreamCloseTests(unittest.TestCase):
     def test_close_from_another_thread_during_read(self):
-        finalized = threading.Event()
-        stream = ChunkStream(slow_chunks(finalized))
+        finalized, reading, release = events()
+        stream = ChunkStream(slow_chunks(finalized, reading, release))
         next(stream)
         reader = threading.Thread(target=lambda: next(stream, None))
         reader.start()
-        time.sleep(0.1)
-        stream.close()  # Hermes interrupt path; must not raise
+        self.assertTrue(reading.wait(5))
+        stream.close()  # Hermes interrupt path; must not raise while the reader is inside the generator
+        release.set()
         reader.join(5)
         self.assertTrue(finalized.wait(5))
         self.assertIsNone(next(stream, None))
 
     def test_async_cancel_then_aclose(self):
-        finalized = threading.Event()
+        finalized, reading, release = events()
 
         async def exercise():
-            stream = ChunkStream(slow_chunks(finalized))
+            stream = ChunkStream(slow_chunks(finalized, reading, release))
             await stream.__anext__()
             pending = asyncio.ensure_future(stream.__anext__())
-            await asyncio.sleep(0.1)
+            await asyncio.to_thread(reading.wait, 5)
             pending.cancel()
             await stream.aclose()
+            release.set()
 
         asyncio.run(exercise())
         self.assertTrue(finalized.wait(5))
 
     def test_close_when_idle_finalizes_immediately(self):
-        finalized = threading.Event()
-        stream = ChunkStream(slow_chunks(finalized))
+        finalized, reading, release = events()
+        stream = ChunkStream(slow_chunks(finalized, reading, release))
         next(stream)
         stream.close()
         self.assertTrue(finalized.is_set())
