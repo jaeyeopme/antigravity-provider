@@ -6,6 +6,7 @@ import http.client
 import json
 import urllib.error
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Iterable, Iterator
 
 from .cloudcode import antigravity_user_agent
@@ -132,22 +133,28 @@ class AntigravityClient:
         """Merge the model catalogs every endpoint advertises for this account."""
         body = json.dumps({"project": project_id}).encode("utf-8")
         headers = self._headers(access_token, "application/json")
-        payloads: list[dict[str, Any]] = []
-        last_error: AntigravityError | None = None
-        token_expired = False
-        for endpoint in self.endpoints:
+
+        def ask(endpoint: str) -> dict[str, Any] | AntigravityError | None:
             request = urllib.request.Request(endpoint + MODELS_PATH, data=body, headers=headers, method="POST")
             try:
                 with urllib.request.urlopen(request, timeout=MODELS_TIMEOUT_SECONDS) as response:
                     data = json.loads(response.read().decode("utf-8") or "{}")
-                if isinstance(data, dict):
-                    payloads.append(data)
             except urllib.error.HTTPError as exc:
                 detail = http_error_detail(exc)
-                token_expired = token_expired or exc.code == 401
-                last_error = AntigravityError(f"Cloud Code Assist API error ({exc.code}): {detail}", status=exc.code)
+                if exc.code == 401:
+                    return TokenExpired()
+                return AntigravityError(f"Cloud Code Assist API error ({exc.code}): {detail}", status=exc.code)
             except (OSError, http.client.HTTPException, ValueError) as exc:
-                last_error = AntigravityError(f"Cloud Code Assist model discovery failed: {exc}", status=502)
+                return AntigravityError(f"Cloud Code Assist model discovery failed: {exc}", status=502)
+            return data if isinstance(data, dict) else None
+
+        # Asked together so a slow endpoint costs one timeout, not one per endpoint; map keeps order.
+        with ThreadPoolExecutor(max_workers=max(1, len(self.endpoints))) as pool:
+            answers = list(pool.map(ask, self.endpoints))
+        payloads = [answer for answer in answers if isinstance(answer, dict)]
+        errors = [answer for answer in answers if isinstance(answer, AntigravityError)]
+        token_expired = any(isinstance(error, TokenExpired) for error in errors)
+        last_error = errors[-1] if errors else None
         if not payloads:
             if token_expired:
                 raise TokenExpired()  # another endpoint's unrelated failure must not hide it
