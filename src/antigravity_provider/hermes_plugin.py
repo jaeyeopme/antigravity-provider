@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import errno
+import shutil
 import sys
 import time
 from pathlib import Path
@@ -31,13 +32,22 @@ def antigravity_llm_request(**kwargs: Any) -> dict[str, dict[str, Any]]:
     return {"request": request}
 
 
+def provider_profile_dir(root: Path | None = None) -> Path:
+    return Path(root or hermes_home()).expanduser() / "plugins" / "model-providers" / "antigravity"
+
+
+def remove_provider_profile_files(root: Path | None = None) -> None:
+    """Delete the shim; left behind after `hermes plugins remove`, Hermes warns at every start."""
+    shutil.rmtree(provider_profile_dir(root), ignore_errors=True)
+
+
 def ensure_provider_profile_files(root: Path | None = None) -> Path:
     """Write the model-provider shim Hermes imports to register the `antigravity` profile.
 
     The generated module only imports `antigravity_provider.hermes_provider`, so it keeps working
     across plugin updates; that import path is a compatibility contract.
     """
-    plugin_dir = Path(root or hermes_home()).expanduser() / "plugins" / "model-providers" / "antigravity"
+    plugin_dir = provider_profile_dir(root)
     plugin_dir.mkdir(parents=True, exist_ok=True)
     (plugin_dir / "__init__.py").write_text(
         "import sys\n"
@@ -82,7 +92,7 @@ def _setup_cli(parser: argparse.ArgumentParser) -> None:
     select.add_argument("model", nargs="?")
 
     sub.add_parser("status", help="show credential status")
-    sub.add_parser("logout", help="remove saved browser OAuth credentials")
+    sub.add_parser("logout", help="remove saved browser OAuth credentials and the provider registration")
 
 
 def _select_model(model_id: str | None) -> None:
@@ -163,7 +173,8 @@ def _run_cli(args: argparse.Namespace) -> None:
         _select_model(args.model)
     elif command == "logout":
         credentials.logout()
-        print("Saved Antigravity browser OAuth credentials removed.")
+        remove_provider_profile_files()
+        print("Saved Antigravity browser OAuth credentials and provider registration removed.")
     else:
         _status()
 

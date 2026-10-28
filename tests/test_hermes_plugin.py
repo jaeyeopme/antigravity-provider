@@ -52,6 +52,9 @@ class HermesPluginTests(unittest.TestCase):
             # Existing installs import exactly this; it must stay stable across releases.
             self.assertIn("from antigravity_provider.hermes_provider import register_provider_profile", init)
             self.assertIn(f"version: {antigravity_provider.__version__}", (path / "plugin.yaml").read_text())
+            plugin.remove_provider_profile_files(Path(td))
+            self.assertFalse(path.exists())
+            plugin.remove_provider_profile_files(Path(td))  # already gone: not an error
 
 
 class VersionTests(unittest.TestCase):

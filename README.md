@@ -86,8 +86,9 @@ hermes plugins remove antigravity-provider
 ```
 
 `hermes agy logout` removes the saved browser sign-in of the active Hermes
-profile. It does not touch the `agy` Keychain credential. Removing the plugin
-alone leaves the saved sign-in in place.
+profile and the small provider registration the plugin wrote there. It does not
+touch the `agy` Keychain credential. Removing the plugin alone leaves both in
+place, and Hermes then warns about the stale registration at every start.
 
 ## How it works
 
@@ -142,7 +143,7 @@ All files live in the active Hermes home (`$HERMES_HOME`, per profile):
 | --- | --- |
 | `.antigravity_oauth.json` | Browser sign-in tokens, readable only by you. |
 | `.antigravity_models.json` | Cached model catalog. |
-| `plugins/model-providers/antigravity/` | Small shim that registers the provider; written by `login` and `select`. |
+| `plugins/model-providers/antigravity/` | Small shim that registers the provider; written by `login` and `select`, removed by `logout`. |
 
 ### Environment variables
 
