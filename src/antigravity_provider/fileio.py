@@ -31,16 +31,13 @@ def write_private_json(path: Path, data: Any) -> None:
 
 
 def _restrict_to_current_user(path: str) -> None:
-    """Windows ignores chmod: drop inherited ACL entries and grant only the current user."""
+    """Windows ignores chmod: leave the current user as the only entry in the file's ACL."""
     domain, user = os.environ.get("USERDOMAIN"), os.environ.get("USERNAME")
     account = f"{domain}\\{user}" if domain and user else getpass.getuser()
     try:
-        subprocess.run(
-            ["icacls", path, "/inheritance:r", "/grant:r", f"{account}:F"],
-            check=True,
-            capture_output=True,
-            timeout=10,
-        )
+        # /reset drops entries set on the file itself; /inheritance:r then drops the inherited ones.
+        for args in (["/reset"], ["/inheritance:r", "/grant:r", f"{account}:F"]):
+            subprocess.run(["icacls", path, *args], check=True, capture_output=True, timeout=10)
     except (subprocess.SubprocessError, OSError) as exc:
         # Callers treat OSError as a failed write: login reports it, background refreshes go on.
         raise OSError(f"could not make {path} private: {exc}") from exc
