@@ -1,0 +1,27 @@
+name: Feature request
+description: Something the plugin should do that it does not.
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The plugin turns Hermes requests into Antigravity requests and back, with no proxy and no dependencies. A feature fits when it is about that translation, sign-in, or the model catalog. Something Hermes itself lacks belongs in [hermes-agent](https://github.com/NousResearch/hermes-agent/issues).
+  - type: textarea
+    id: goal
+    attributes:
+      label: What you want to do in Hermes
+      description: The task, not the implementation.
+    validations:
+      required: true
+  - type: textarea
+    id: today
+    attributes:
+      label: What happens today
+      description: How you do it now, or what stops you.
+    validations:
+      required: true
+  - type: textarea
+    id: backend
+    attributes:
+      label: Does Antigravity support it?
+      description: If you know the IDE or `agy` does this, say how. The plugin can only pass on what the backend offers.

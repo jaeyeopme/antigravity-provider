@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security problem (token exposure, sign-in)
+    url: https://github.com/jaeyeopme/antigravity-provider/security/advisories/new
+    about: Report privately. Never paste a token or .antigravity_oauth.json into an issue.
+  - name: Hermes Agent itself (install, update, other providers, the TUI)
+    url: https://github.com/NousResearch/hermes-agent/issues
+    about: Problems that happen without this plugin belong to Hermes.
