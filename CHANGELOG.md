@@ -11,6 +11,7 @@ Each version is the date its code reached `main` (`YYYY.M.D`), with `.1`, `.2`, 
 - A revoked or expired sign-in says to run `hermes agy login`; before, every request showed a raw `400 invalid_grant`.
 - `hermes agy login` failures print one line instead of a traceback; a busy sign-in port names `ANTIGRAVITY_OAUTH_PORT`; an `agy` credential that no longer works falls back to browser sign-in.
 - Ask both endpoints for the model list at the same time, so a slow network delays a catalog refresh by one timeout, not two.
+- Make the saved sign-in private on Windows. `chmod` does nothing there, so other accounts on the machine could read the tokens, for example with `HERMES_HOME` outside the user profile.
 - Keep using a refreshed token when saving it fails (Windows, while another Hermes process reads the file).
 - Keep the backend's message for a stream error with a text code such as `RESOURCE_EXHAUSTED`.
 
