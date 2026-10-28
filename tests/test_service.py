@@ -78,6 +78,18 @@ class ServiceTests(unittest.TestCase):
         self.assertEqual(chunks[0]["choices"][0]["delta"]["content"], "pong")
         self.assertEqual(client.tokens, ["old", "new"])
 
+    def test_stream_does_not_retry_after_the_first_chunk(self):
+        class Client(FakeClient):
+            def stream_generate(self, *, access_token, body):
+                self.tokens.append(access_token)
+                yield {"candidates": [{"content": {"parts": [{"text": "half"}]}}]}
+                raise TokenExpired()  # retrying here would show the reply twice
+
+        client = Client()
+        with self.assertRaises(TokenExpired):
+            list(self.service(client).stream(PAYLOAD))
+        self.assertEqual((client.tokens, self.refreshes), (["old"], []))
+
     def test_stream_emits_reasoning_text_and_finish(self):
         events = [
             {"candidates": [{"content": {"parts": [{"text": "thinking", "thought": True}]}}]},
