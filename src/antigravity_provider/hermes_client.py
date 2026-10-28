@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import threading
+from collections.abc import Iterator
 from types import SimpleNamespace
-from typing import Any, Iterator
+from typing import Any
 
 from .service import AntigravityService, default_service
 
@@ -17,9 +18,12 @@ _DICT_FIELDS = {"extra_content"}
 
 def _namespace(value: Any) -> Any:
     if isinstance(value, dict):
-        return SimpleNamespace(**{
-            key: nested if key in _DICT_FIELDS else _namespace(nested) for key, nested in value.items()
-        })
+        return SimpleNamespace(
+            **{
+                key: nested if key in _DICT_FIELDS else _namespace(nested)
+                for key, nested in value.items()
+            }
+        )
     if isinstance(value, list):
         return [_namespace(nested) for nested in value]
     return value
@@ -54,7 +58,7 @@ class ChunkStream:
         self._running = threading.Lock()
         self._closed = False
 
-    def __iter__(self) -> "ChunkStream":
+    def __iter__(self) -> ChunkStream:
         return self
 
     def __next__(self) -> Any:
@@ -63,7 +67,7 @@ class ChunkStream:
                 raise StopIteration
             return _namespace(next(self._chunks))
 
-    def __aiter__(self) -> "ChunkStream":
+    def __aiter__(self) -> ChunkStream:
         return self
 
     async def __anext__(self) -> Any:
@@ -80,7 +84,9 @@ class ChunkStream:
             finally:
                 self._running.release()
         else:
-            threading.Thread(target=self._close_when_idle, name="antigravity-stream-close", daemon=True).start()
+            threading.Thread(
+                target=self._close_when_idle, name="antigravity-stream-close", daemon=True
+            ).start()
 
     def _close_when_idle(self) -> None:
         with self._running:
@@ -89,7 +95,7 @@ class ChunkStream:
     async def aclose(self) -> None:
         self.close()
 
-    def __enter__(self) -> "ChunkStream":
+    def __enter__(self) -> ChunkStream:
         return self
 
     def __exit__(self, *exc: object) -> None:
@@ -103,7 +109,13 @@ class _DeferredCompletion:
     Either way the blocking request runs once.
     """
 
-    def __init__(self, client: "HermesAntigravityClient", payload: dict[str, Any], stream: bool, session_id: str | None):
+    def __init__(
+        self,
+        client: HermesAntigravityClient,
+        payload: dict[str, Any],
+        stream: bool,
+        session_id: str | None,
+    ):
         self._client = client
         self._args = (payload, stream, session_id)
         self._value: Any = _END
@@ -134,7 +146,14 @@ class HermesAntigravityClient:
     HERMES_SKIP_TRANSPORT_WRAP = True
     HERMES_SKIP_ASYNC_WRAP = True
 
-    def __init__(self, *, api_key: str = "", base_url: str = "", service: AntigravityService | None = None, **_: Any):
+    def __init__(
+        self,
+        *,
+        api_key: str = "",
+        base_url: str = "",
+        service: AntigravityService | None = None,
+        **_: Any,
+    ):
         self.api_key = api_key
         self.base_url = base_url
         self.is_closed = False

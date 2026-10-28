@@ -8,7 +8,6 @@ from unittest.mock import patch
 
 from antigravity_provider.catalog import CatalogManager, build_catalog, fallback_catalog
 
-
 CATALOG_PAYLOAD = {
     "models": {
         "gemini-3.8-flash-tiered": {
@@ -106,9 +105,17 @@ class CatalogTests(unittest.TestCase):
             "defaultAgentModelId": "claude-sonnet-4-6",
             "commitMessageModelIds": ["gemini-3.5-flash-lite"],
         }
-        self.assertEqual(build_catalog(payload).aux_model, "google-antigravity/gemini-3.5-flash-lite")
-        tiered = {**payload, "commitMessageModelIds": [], "tieredModelIds": {"flashLite": ["gemini-3.5-flash-lite"]}}
-        self.assertEqual(build_catalog(tiered).aux_model, "google-antigravity/gemini-3.5-flash-lite")
+        self.assertEqual(
+            build_catalog(payload).aux_model, "google-antigravity/gemini-3.5-flash-lite"
+        )
+        tiered = {
+            **payload,
+            "commitMessageModelIds": [],
+            "tieredModelIds": {"flashLite": ["gemini-3.5-flash-lite"]},
+        }
+        self.assertEqual(
+            build_catalog(tiered).aux_model, "google-antigravity/gemini-3.5-flash-lite"
+        )
 
     def test_aux_model_falls_back_to_default_when_pick_is_not_listed(self):
         payload = {
@@ -124,22 +131,24 @@ class CatalogTests(unittest.TestCase):
         self.assertNotIn("google-antigravity/gemini-3.5-flash", seed.model_ids())
 
     def test_unsuffixed_default_beats_nonmatching_thinking_variant(self):
-        catalog = build_catalog({
-            "models": {
-                "gemini-2.5-flash": {
-                    "supportsThinking": True,
-                    "thinkingBudget": -1,
+        catalog = build_catalog(
+            {
+                "models": {
+                    "gemini-2.5-flash": {
+                        "supportsThinking": True,
+                        "thinkingBudget": -1,
+                    },
+                    "gemini-2.5-flash-thinking": {
+                        "supportsThinking": True,
+                        "thinkingBudget": -1,
+                    },
                 },
-                "gemini-2.5-flash-thinking": {
-                    "supportsThinking": True,
-                    "thinkingBudget": -1,
+                "agentModelSorts": {
+                    "gemini-2.5-flash": 1,
+                    "gemini-2.5-flash-thinking": 2,
                 },
-            },
-            "agentModelSorts": {
-                "gemini-2.5-flash": 1,
-                "gemini-2.5-flash-thinking": 2,
-            },
-        })
+            }
+        )
         for effort in ("off", "minimal", "low", "medium"):
             route = catalog.resolve("gemini-2.5-flash", effort)
             self.assertEqual(route.wire_model, "gemini-2.5-flash")
@@ -183,7 +192,9 @@ class CatalogTests(unittest.TestCase):
             manager = CatalogManager(path=lambda: home[0] / "catalog.json")
             first = manager.get(project_id="project-a", fetch=Fetch(CATALOG_PAYLOAD))
             home[0] = Path(directory) / "b"
-            second = manager.get(project_id="project-b", fetch=Fetch({"models": {"claude-sonnet-4-6": {}}}))
+            second = manager.get(
+                project_id="project-b", fetch=Fetch({"models": {"claude-sonnet-4-6": {}}})
+            )
             self.assertNotEqual(first.model_ids(), second.model_ids())
             self.assertIs(manager.current(), second)
             home[0] = Path(directory) / "a"
@@ -195,7 +206,9 @@ class CatalogTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             now = [1000.0]
             fetch = Fetch(CATALOG_PAYLOAD)
-            manager = CatalogManager(path=Path(directory) / "catalog.json", ttl_seconds=10, clock=lambda: now[0])
+            manager = CatalogManager(
+                path=Path(directory) / "catalog.json", ttl_seconds=10, clock=lambda: now[0]
+            )
             first = manager.get(project_id="project", fetch=fetch)
             self.assertIn("google-antigravity/gemini-3.9-flash", first.model_ids())
             now[0] += 20
@@ -238,7 +251,9 @@ class CatalogTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             now = [1000.0]
             fetch = Fetch(error=RuntimeError("down"))
-            manager = CatalogManager(path=Path(directory) / "catalog.json", retry_seconds=300, clock=lambda: now[0])
+            manager = CatalogManager(
+                path=Path(directory) / "catalog.json", retry_seconds=300, clock=lambda: now[0]
+            )
             for _ in range(5):
                 catalog = manager.get(project_id="project", fetch=fetch)
             self.assertEqual(fetch.calls, 1)
@@ -252,7 +267,9 @@ class CatalogTests(unittest.TestCase):
     def test_stale_catalog_is_served_while_another_thread_refreshes(self):
         with tempfile.TemporaryDirectory() as directory:
             now = [1000.0]
-            manager = CatalogManager(path=Path(directory) / "catalog.json", ttl_seconds=10, clock=lambda: now[0])
+            manager = CatalogManager(
+                path=Path(directory) / "catalog.json", ttl_seconds=10, clock=lambda: now[0]
+            )
             stale = manager.get(project_id="project", fetch=Fetch(CATALOG_PAYLOAD))
             now[0] += 20
             started, release = threading.Event(), threading.Event()
@@ -262,7 +279,9 @@ class CatalogTests(unittest.TestCase):
                 release.wait(5)
                 return CATALOG_PAYLOAD
 
-            worker = threading.Thread(target=manager.get, kwargs={"project_id": "project", "fetch": slow_fetch})
+            worker = threading.Thread(
+                target=manager.get, kwargs={"project_id": "project", "fetch": slow_fetch}
+            )
             worker.start()
             started.wait(5)
             began = time.monotonic()
@@ -283,6 +302,7 @@ class CatalogTests(unittest.TestCase):
                 manager.get(project_id="other", fetch=Fetch(CATALOG_PAYLOAD))
             self.assertTrue((Path(first) / ".antigravity_models.json").exists())
             self.assertTrue((Path(second) / ".antigravity_models.json").exists())
+
 
 if __name__ == "__main__":
     unittest.main()

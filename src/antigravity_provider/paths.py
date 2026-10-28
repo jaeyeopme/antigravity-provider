@@ -5,7 +5,6 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-
 OAUTH_CREDENTIALS_FILE = ".antigravity_oauth.json"
 
 

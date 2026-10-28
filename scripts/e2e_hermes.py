@@ -31,7 +31,9 @@ retired_requests: list[dict] = []
 
 
 def sse(events: list[dict]) -> bytes:
-    return b"".join(b"data: " + json.dumps({"response": event}).encode() + b"\n\n" for event in events)
+    return b"".join(
+        b"data: " + json.dumps({"response": event}).encode() + b"\n\n" for event in events
+    )
 
 
 class FakeAntigravity(BaseHTTPRequestHandler):
@@ -49,8 +51,13 @@ class FakeAntigravity(BaseHTTPRequestHandler):
         body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
         if "fetchAvailableModels" in self.path:
             models = {
-                "gemini-3.1-pro-low": {"maxOutputTokens": 8192, "supportsThinking": True, "thinkingBudget": 1001},
-                "gemini-3.5-flash-low": {}, "gemini-3.5-flash-lite": {},
+                "gemini-3.1-pro-low": {
+                    "maxOutputTokens": 8192,
+                    "supportsThinking": True,
+                    "thinkingBudget": 1001,
+                },
+                "gemini-3.5-flash-low": {},
+                "gemini-3.5-flash-lite": {},
             }
             catalog = {"models": models, "commitMessageModelIds": ["gemini-3.5-flash-lite"]}
             self._send("application/json", json.dumps(catalog).encode())
@@ -60,23 +67,71 @@ class FakeAntigravity(BaseHTTPRequestHandler):
             return
         if body["model"] == "gemini-3.5-flash-low":  # retired: the backend sends only a notice
             retired_requests.append(body)
-            self._send("text/event-stream", sse([{"candidates": [{"content": {"parts": [{"text": RETIRED}]}}]}]))
+            self._send(
+                "text/event-stream",
+                sse([{"candidates": [{"content": {"parts": [{"text": RETIRED}]}}]}]),
+            )
             return
         generate_requests.append(body)
         request = body["request"]
-        if any("functionResponse" in part for content in request["contents"] for part in content["parts"]):
-            self._send("text/event-stream", sse([
-                {"candidates": [{"content": {"role": "model", "parts": [{"text": "all done"}]}, "finishReason": "STOP"}]},
-            ]))
+        if any(
+            "functionResponse" in part
+            for content in request["contents"]
+            for part in content["parts"]
+        ):
+            self._send(
+                "text/event-stream",
+                sse(
+                    [
+                        {
+                            "candidates": [
+                                {
+                                    "content": {"role": "model", "parts": [{"text": "all done"}]},
+                                    "finishReason": "STOP",
+                                }
+                            ]
+                        },
+                    ]
+                ),
+            )
             return
-        names = [d["name"] for tool in request.get("tools", []) for d in tool["functionDeclarations"]]
+        names = [
+            d["name"] for tool in request.get("tools", []) for d in tool["functionDeclarations"]
+        ]
         tool = next((name for name in SAFE_TOOLS if name in names), names[0])
-        self._send("text/event-stream", sse([
-            {"candidates": [{"content": {"role": "model", "parts": [{"text": "planning", "thought": True}]}}]},
-            {"candidates": [{"content": {"role": "model", "parts": [
-                {"functionCall": {"name": tool, "args": {}}, "thoughtSignature": SIGNATURE},
-            ]}, "finishReason": "STOP"}]},
-        ]))
+        self._send(
+            "text/event-stream",
+            sse(
+                [
+                    {
+                        "candidates": [
+                            {
+                                "content": {
+                                    "role": "model",
+                                    "parts": [{"text": "planning", "thought": True}],
+                                }
+                            }
+                        ]
+                    },
+                    {
+                        "candidates": [
+                            {
+                                "content": {
+                                    "role": "model",
+                                    "parts": [
+                                        {
+                                            "functionCall": {"name": tool, "args": {}},
+                                            "thoughtSignature": SIGNATURE,
+                                        },
+                                    ],
+                                },
+                                "finishReason": "STOP",
+                            }
+                        ]
+                    },
+                ]
+            ),
+        )
 
 
 def main() -> int:
@@ -85,12 +140,17 @@ def main() -> int:
     url = f"http://127.0.0.1:{server.server_address[1]}"
 
     import antigravity_provider.client as client_module
-    from antigravity_provider.credentials import CredentialStore, Credentials
+    from antigravity_provider.credentials import Credentials, CredentialStore
     from antigravity_provider.hermes_provider import PROVIDER_BASE_URL, register_provider_profile
 
     client_module.ANTIGRAVITY_ENDPOINTS[:] = [url]
     CredentialStore.default().save(
-        Credentials(access_token="tok", refresh_token="ref", project_id="proj", expires_at=time.time() + 3600)
+        Credentials(
+            access_token="tok",
+            refresh_token="ref",
+            project_id="proj",
+            expires_at=time.time() + 3600,
+        )
     )
     if not register_provider_profile():
         print("FAIL: Hermes provider registry is not importable")
@@ -101,23 +161,36 @@ def main() -> int:
 
     def new_agent(model: str) -> AIAgent:
         return AIAgent(
-            provider="antigravity", model=model, api_key="hermes-plugin", base_url=PROVIDER_BASE_URL,
-            api_mode="chat_completions", quiet_mode=True, skip_memory=True, skip_context_files=True, max_iterations=4,
+            provider="antigravity",
+            model=model,
+            api_key="hermes-plugin",
+            base_url=PROVIDER_BASE_URL,
+            api_mode="chat_completions",
+            quiet_mode=True,
+            skip_memory=True,
+            skip_context_files=True,
+            max_iterations=4,
         )
 
     reply = new_agent("google-antigravity/gemini-3.1-pro").chat("please use a tool")
     replayed = [
-        part for content in generate_requests[-1]["request"]["contents"]
-        for part in content["parts"] if "functionCall" in part
+        part
+        for content in generate_requests[-1]["request"]["contents"]
+        for part in content["parts"]
+        if "functionCall" in part
     ]
     checks = {
         "assistant reply came back": reply == "all done",
         "tool round trip took two requests": len(generate_requests) == 2,
-        "thought signature replayed": bool(replayed) and replayed[0].get("thoughtSignature") == SIGNATURE,
+        "thought signature replayed": bool(replayed)
+        and replayed[0].get("thoughtSignature") == SIGNATURE,
         "one Antigravity session": len({r["request"]["sessionId"] for r in generate_requests}) == 1,
         "aux model is the catalog's cheap pick": _get_aux_model_for_provider("antigravity")
         == "google-antigravity/gemini-3.5-flash-lite",
-        "retired model notice reaches the user": new_agent("google-antigravity/gemini-3.5-flash").chat("hi") == RETIRED,
+        "retired model notice reaches the user": new_agent(
+            "google-antigravity/gemini-3.5-flash"
+        ).chat("hi")
+        == RETIRED,
         "retired model notice is not continued": len(retired_requests) == 1,
     }
     for name, passed in checks.items():

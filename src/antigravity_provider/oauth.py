@@ -10,8 +10,9 @@ import sys
 import time
 import urllib.parse
 import webbrowser
+from collections.abc import Callable
 from http.server import BaseHTTPRequestHandler, HTTPServer
-from typing import Any, Callable
+from typing import Any
 
 from .errors import AntigravityError
 from .net import request_json
@@ -25,7 +26,14 @@ USERINFO_URL = "https://www.googleapis.com/oauth2/v1/userinfo?alt=json"
 # Public desktop-app OAuth client of the Antigravity IDE. Desktop clients cannot keep their secret
 # confidential (RFC 8252); it is split only so secret scanners do not flag every checkout.
 CLIENT_ID = "".join(
-    ("1071006060591", "-", "tmhssin2h21lcre235vtolojh4g403ep", ".apps.", "googleusercontent", ".com")
+    (
+        "1071006060591",
+        "-",
+        "tmhssin2h21lcre235vtolojh4g403ep",
+        ".apps.",
+        "googleusercontent",
+        ".com",
+    )
 )
 CLIENT_SECRET = "".join(("GOC", "SPX", "-", "K58FWR486LdLJ1mLB", "8sXC4z6qDAf"))
 SCOPES = [
@@ -44,7 +52,9 @@ def oauth_client() -> tuple[str, str]:
 
 
 def _post_form(url: str, form: dict[str, str]) -> dict[str, Any]:
-    return request_json(url, headers={}, form=form, timeout=60, error_prefix="OAuth token request failed")
+    return request_json(
+        url, headers={}, form=form, timeout=60, error_prefix="OAuth token request failed"
+    )
 
 
 def _token_set(data: dict[str, Any], *, refresh_token: str | None = None) -> dict[str, Any]:
@@ -91,7 +101,9 @@ def refresh_access_token(
         raise
     if not data.get("access_token"):
         raise AntigravityError(
-            "OAuth refresh response did not include access_token", status=401, error_type="invalid_request_error"
+            "OAuth refresh response did not include access_token",
+            status=401,
+            error_type="invalid_request_error",
         )
     return _token_set(data, refresh_token=refresh_token)
 
@@ -127,7 +139,9 @@ def exchange_code_for_tokens(
 
 def fetch_user_email(access_token: str) -> str | None:
     try:
-        data = request_json(USERINFO_URL, headers={"Authorization": f"Bearer {access_token}"}, timeout=30)
+        data = request_json(
+            USERINFO_URL, headers={"Authorization": f"Bearer {access_token}"}, timeout=30
+        )
     except AntigravityError:
         return None
     email = data.get("email")
@@ -224,15 +238,23 @@ def browser_login(*, open_browser: bool = True, timeout: int = 300) -> dict[str,
         if open_browser:
             webbrowser.open(auth_url)
         deadline = time.monotonic() + timeout
-        while time.monotonic() < deadline and not server.received_code and not server.received_error:
+        while (
+            time.monotonic() < deadline and not server.received_code and not server.received_error
+        ):
             server.handle_request()
     finally:
         server.server_close()
 
     if server.received_error:
         raise AntigravityError(
-            f"OAuth callback failed: {server.received_error}", status=401, error_type="invalid_request_error"
+            f"OAuth callback failed: {server.received_error}",
+            status=401,
+            error_type="invalid_request_error",
         )
     if not server.received_code:
-        raise AntigravityError("OAuth login timed out", status=401, error_type="invalid_request_error")
-    return exchange_code_for_tokens(server.received_code, redirect_uri=redirect_uri, code_verifier=verifier)
+        raise AntigravityError(
+            "OAuth login timed out", status=401, error_type="invalid_request_error"
+        )
+    return exchange_code_for_tokens(
+        server.received_code, redirect_uri=redirect_uri, code_verifier=verifier
+    )

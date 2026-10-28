@@ -95,7 +95,11 @@ def _parts_from_content(content: Any) -> list[dict[str, Any]]:
     for item in content:
         if not isinstance(item, dict):
             continue
-        if item.get("type") == "text" and isinstance(item.get("text"), str) and item["text"].strip():
+        if (
+            item.get("type") == "text"
+            and isinstance(item.get("text"), str)
+            and item["text"].strip()
+        ):
             parts.append({"text": item["text"]})
         elif item.get("type") == "image_url":
             image = item.get("image_url")
@@ -127,7 +131,11 @@ def thought_signature(tool_call: dict[str, Any]) -> str | None:
     if not isinstance(extra, dict):
         return None
     google = extra.get("google")
-    signature = google.get("thought_signature") if isinstance(google, dict) else extra.get("thought_signature")
+    signature = (
+        google.get("thought_signature")
+        if isinstance(google, dict)
+        else extra.get("thought_signature")
+    )
     return signature if isinstance(signature, str) and signature.strip() else None
 
 
@@ -141,7 +149,9 @@ def _accepts_thought_signature(wire_model: str) -> bool:
     return wire_model.startswith("gemini")
 
 
-def _model_parts(message: dict[str, Any], wire_model: str, call_names: dict[str, str]) -> list[dict[str, Any]]:
+def _model_parts(
+    message: dict[str, Any], wire_model: str, call_names: dict[str, str]
+) -> list[dict[str, Any]]:
     parts = _parts_from_content(message.get("content"))
     calls: list[tuple[dict[str, Any], str | None]] = []
     for tool_call in message.get("tool_calls") or []:
@@ -179,11 +189,19 @@ def _function_declarations(tools: list[dict[str, Any]]) -> list[dict[str, Any]] 
         if not isinstance(fn, dict) or not fn.get("name"):
             continue
         parameters = to_gemini_schema(fn.get("parameters"))
-        declarations.append({"name": fn["name"], "description": fn.get("description") or "", "parameters": parameters})
+        declarations.append(
+            {
+                "name": fn["name"],
+                "description": fn.get("description") or "",
+                "parameters": parameters,
+            }
+        )
     return [{"functionDeclarations": declarations}] if declarations else None
 
 
-def _tool_config(tools: list[dict[str, Any]], tool_choice: Any, wire_model: str) -> dict[str, Any] | None:
+def _tool_config(
+    tools: list[dict[str, Any]], tool_choice: Any, wire_model: str
+) -> dict[str, Any] | None:
     if isinstance(tool_choice, str):
         choice = tool_choice.lower()
         if choice == "none":
@@ -230,7 +248,9 @@ def _envelope_labels(route: ResolvedRoute, step: int = 2) -> dict[str, str]:
     return labels
 
 
-def _contents(messages: list[dict[str, Any]], wire_model: str) -> tuple[list[dict[str, Any]], list[dict[str, str]]]:
+def _contents(
+    messages: list[dict[str, Any]], wire_model: str
+) -> tuple[list[dict[str, Any]], list[dict[str, str]]]:
     system_parts: list[dict[str, str]] = []
     contents: list[dict[str, Any]] = []
     call_names: dict[str, str] = {}
@@ -249,10 +269,18 @@ def _contents(messages: list[dict[str, Any]], wire_model: str) -> tuple[list[dic
             if parts:
                 contents.append({"role": "model", "parts": parts})
         elif role == "tool":
-            name = message.get("name") or call_names.get(str(message.get("tool_call_id") or "")) or "tool"
+            name = (
+                message.get("name")
+                or call_names.get(str(message.get("tool_call_id") or ""))
+                or "tool"
+            )
             content = message.get("content")
             result_parts = _parts_from_content(content) if isinstance(content, list) else []
-            output = "\n".join(p["text"] for p in result_parts if "text" in p) if result_parts else _content_text(content)
+            output = (
+                "\n".join(p["text"] for p in result_parts if "text" in p)
+                if result_parts
+                else _content_text(content)
+            )
             part = {"functionResponse": {"name": name, "response": {"output": output}}}
             images = [p for p in result_parts if "inlineData" in p]
             if images:
@@ -262,7 +290,11 @@ def _contents(messages: list[dict[str, Any]], wire_model: str) -> tuple[list[dic
                 part["functionResponse"]["id"] = str(message["tool_call_id"])
             previous = contents[-1] if contents else None
             # Results of one parallel tool batch go back together in a single user turn.
-            if previous and previous["role"] == "user" and any("functionResponse" in p for p in previous["parts"]):
+            if (
+                previous
+                and previous["role"] == "user"
+                and any("functionResponse" in p for p in previous["parts"])
+            ):
                 previous["parts"].append(part)
             else:
                 contents.append({"role": "user", "parts": [part]})
@@ -278,7 +310,9 @@ def build_generate_content_request(
     session_id: str | None = None,
     catalog: ModelCatalog | None = None,
 ) -> dict[str, Any]:
-    route = (catalog or fallback_catalog()).resolve(request.model, normalize_effort(request.reasoning_effort))
+    route = (catalog or fallback_catalog()).resolve(
+        request.model, normalize_effort(request.reasoning_effort)
+    )
     contents, system_parts = _contents(request.messages, route.wire_model)
 
     max_tokens = request.max_tokens
@@ -288,7 +322,12 @@ def build_generate_content_request(
         else route.max_output_tokens
     )
     budget = route.thinking_budget
-    if route.wire_model.startswith("claude-") and budget is not None and 0 < budget and max_output <= budget:
+    if (
+        route.wire_model.startswith("claude-")
+        and budget is not None
+        and 0 < budget
+        and max_output <= budget
+    ):
         # Claude counts thinking toward max_tokens and rejects max_tokens <= the thinking budget.
         max_output = min(budget + max_output, route.max_output_tokens)
     generation_config: dict[str, Any] = {"maxOutputTokens": max_output}

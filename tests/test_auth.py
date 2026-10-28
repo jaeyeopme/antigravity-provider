@@ -6,12 +6,22 @@ from unittest.mock import patch
 
 from antigravity_provider import oauth
 from antigravity_provider.auth import CredentialManager
-from antigravity_provider.credentials import SOURCE_BROWSER, SOURCE_KEYCHAIN, CredentialStore, Credentials
+from antigravity_provider.credentials import (
+    SOURCE_BROWSER,
+    SOURCE_KEYCHAIN,
+    Credentials,
+    CredentialStore,
+)
 from antigravity_provider.errors import AntigravityError, TokenExpired
 
 
 def fresh(**overrides):
-    values = {"access_token": "tok", "refresh_token": "ref", "project_id": "p", "expires_at": time.time() + 3600}
+    values = {
+        "access_token": "tok",
+        "refresh_token": "ref",
+        "project_id": "p",
+        "expires_at": time.time() + 3600,
+    }
     values.update(overrides)
     return values
 
@@ -37,11 +47,19 @@ class Harness:
 
     def load_keychain(self):
         self.keychain_loads += 1
-        return Credentials.from_mapping(self.keychain, source=SOURCE_KEYCHAIN) if self.keychain else None
+        return (
+            Credentials.from_mapping(self.keychain, source=SOURCE_KEYCHAIN)
+            if self.keychain
+            else None
+        )
 
     def refresh(self, refresh_token):
         self.refreshes.append(refresh_token)
-        return {"access_token": f"new-{len(self.refreshes)}", "refresh_token": "rotated", "expires_at": time.time() + 3600}
+        return {
+            "access_token": f"new-{len(self.refreshes)}",
+            "refresh_token": "rotated",
+            "expires_at": time.time() + 3600,
+        }
 
 
 class CurrentCredentialTests(unittest.TestCase):
@@ -58,14 +76,18 @@ class CurrentCredentialTests(unittest.TestCase):
 
     def test_expired_browser_token_is_refreshed_and_saved(self):
         h = Harness(self.tmp.name)
-        h.store.save(Credentials.from_mapping(fresh(expires_at=time.time() - 1), source=SOURCE_BROWSER))
+        h.store.save(
+            Credentials.from_mapping(fresh(expires_at=time.time() - 1), source=SOURCE_BROWSER)
+        )
         self.assertEqual(h.manager.current().access_token, "new-1")
         self.assertEqual(h.store.load().refresh_token, "rotated")
 
     def test_refreshed_token_is_used_even_if_saving_it_fails(self):
         # Windows refuses to replace a file another Hermes process is reading.
         h = Harness(self.tmp.name)
-        h.store.save(Credentials.from_mapping(fresh(expires_at=time.time() - 1), source=SOURCE_BROWSER))
+        h.store.save(
+            Credentials.from_mapping(fresh(expires_at=time.time() - 1), source=SOURCE_BROWSER)
+        )
         with patch.object(h.store, "save", side_effect=PermissionError("in use")):
             self.assertEqual(h.manager.current().access_token, "new-1")
 
@@ -100,11 +122,16 @@ class CurrentCredentialTests(unittest.TestCase):
         self.assertEqual(raised.exception.status, 401)
 
     def test_store_follows_profile_switch(self):
-        stores = {"a": CredentialStore(Path(self.tmp.name) / "a.json"), "b": CredentialStore(Path(self.tmp.name) / "b.json")}
+        stores = {
+            "a": CredentialStore(Path(self.tmp.name) / "a.json"),
+            "b": CredentialStore(Path(self.tmp.name) / "b.json"),
+        }
         stores["a"].save(Credentials.from_mapping(fresh(access_token="A"), source=SOURCE_BROWSER))
         stores["b"].save(Credentials.from_mapping(fresh(access_token="B"), source=SOURCE_BROWSER))
         active = ["a"]
-        manager = CredentialManager(store_factory=lambda: stores[active[0]], keychain_loader=lambda: None)
+        manager = CredentialManager(
+            store_factory=lambda: stores[active[0]], keychain_loader=lambda: None
+        )
         self.assertEqual(manager.current().access_token, "A")
         active[0] = "b"
         self.assertEqual(manager.current().access_token, "B")
@@ -133,7 +160,11 @@ class RefreshAfterRejectionTests(unittest.TestCase):
         h = Harness(self.tmp.name)
         h.store.save(Credentials.from_mapping(fresh(), source=SOURCE_BROWSER))
         rejected = h.manager.current()
-        h.store.save(Credentials.from_mapping(fresh(access_token="from-other-process"), source=SOURCE_BROWSER))
+        h.store.save(
+            Credentials.from_mapping(
+                fresh(access_token="from-other-process"), source=SOURCE_BROWSER
+            )
+        )
         self.assertEqual(h.manager.refresh(rejected).access_token, "from-other-process")
         self.assertEqual(h.refreshes, [])
 
@@ -153,7 +184,9 @@ class RefreshAfterRejectionTests(unittest.TestCase):
     def test_expired_keychain_token_uses_a_new_agy_sign_in(self):
         h = Harness(self.tmp.name, keychain=fresh(refresh_token="old"))
         h.manager.current()
-        h.manager._keychain = Credentials.from_mapping(fresh(refresh_token="old", expires_at=1), source=SOURCE_KEYCHAIN)
+        h.manager._keychain = Credentials.from_mapping(
+            fresh(refresh_token="old", expires_at=1), source=SOURCE_KEYCHAIN
+        )
         h.keychain = fresh(access_token="relogin", refresh_token="new")
         h.manager._refresh_tokens = revoked
         self.assertEqual(h.manager.current().access_token, "relogin")
@@ -195,9 +228,14 @@ class LoginTests(unittest.TestCase):
     def test_login_prefers_keychain_and_removes_browser_override(self):
         h = Harness(self.tmp.name, keychain=fresh(project_id=""))
         h.store.save(Credentials.from_mapping(fresh(access_token="browser"), source=SOURCE_BROWSER))
-        with patch.object(oauth, "browser_login", side_effect=AssertionError("browser flow must not run")):
+        with patch.object(
+            oauth, "browser_login", side_effect=AssertionError("browser flow must not run")
+        ):
             creds = h.manager.login(open_browser=False)
-        self.assertEqual((creds.source, creds.project_id, creds.email), (SOURCE_KEYCHAIN, "discovered", "user@example.com"))
+        self.assertEqual(
+            (creds.source, creds.project_id, creds.email),
+            (SOURCE_KEYCHAIN, "discovered", "user@example.com"),
+        )
         self.assertIsNone(h.store.load())
         self.assertEqual(h.manager.current().access_token, "tok")
 
@@ -212,12 +250,18 @@ class LoginTests(unittest.TestCase):
 
     def test_no_keychain_login_saves_browser_credentials(self):
         h = Harness(self.tmp.name, keychain=fresh())
-        tokens = {"access_token": "browser", "refresh_token": "b-ref", "expires_at": time.time() + 3600}
+        tokens = {
+            "access_token": "browser",
+            "refresh_token": "b-ref",
+            "expires_at": time.time() + 3600,
+        }
         with patch.object(oauth, "browser_login", return_value=tokens):
             creds = h.manager.login(use_keychain=False, open_browser=False)
         saved = h.store.load()
-        self.assertEqual((creds.access_token, saved.access_token, saved.project_id, saved.email),
-                         ("browser", "browser", "discovered", "user@example.com"))
+        self.assertEqual(
+            (creds.access_token, saved.access_token, saved.project_id, saved.email),
+            ("browser", "browser", "discovered", "user@example.com"),
+        )
 
     def test_describe_makes_no_network_calls(self):
         h = Harness(self.tmp.name, keychain={"refresh_token": "ref"})

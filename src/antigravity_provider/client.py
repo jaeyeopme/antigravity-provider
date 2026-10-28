@@ -6,8 +6,9 @@ import http.client
 import json
 import urllib.error
 import urllib.request
+from collections.abc import Iterable, Iterator
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any, Iterable, Iterator
+from typing import Any
 
 from .cloudcode import antigravity_user_agent
 from .errors import AntigravityError, TokenExpired
@@ -89,7 +90,9 @@ class AntigravityClient:
             "User-Agent": antigravity_user_agent(),
         }
 
-    def stream_generate(self, *, access_token: str, body: dict[str, Any]) -> Iterator[dict[str, Any]]:
+    def stream_generate(
+        self, *, access_token: str, body: dict[str, Any]
+    ) -> Iterator[dict[str, Any]]:
         """Yield upstream response chunks, trying the next endpoint only before the first chunk.
 
         Closing the returned generator closes the HTTP response.
@@ -99,7 +102,9 @@ class AntigravityClient:
         last_error: AntigravityError | None = None
         for endpoint in self.endpoints:
             emitted = False
-            request = urllib.request.Request(endpoint + STREAM_PATH, data=payload, headers=headers, method="POST")
+            request = urllib.request.Request(
+                endpoint + STREAM_PATH, data=payload, headers=headers, method="POST"
+            )
             try:
                 with urllib.request.urlopen(request, timeout=STREAM_TIMEOUT_SECONDS) as response:
                     for event in _sse_events(response):
@@ -107,10 +112,14 @@ class AntigravityClient:
                         if error is not None:
                             raise error
                         emitted = True
-                        yield event["response"] if isinstance(event.get("response"), dict) else event
+                        yield (
+                            event["response"] if isinstance(event.get("response"), dict) else event
+                        )
                 if emitted:
                     return
-                last_error = AntigravityError("Antigravity endpoint returned an empty stream", status=502)
+                last_error = AntigravityError(
+                    "Antigravity endpoint returned an empty stream", status=502
+                )
             except TokenExpired:
                 raise
             except AntigravityError as exc:
@@ -122,14 +131,19 @@ class AntigravityClient:
                     exc.close()
                     raise TokenExpired() from exc
                 last_error = AntigravityError(
-                    f"Cloud Code Assist API error ({exc.code}): {http_error_detail(exc)}", status=exc.code
+                    f"Cloud Code Assist API error ({exc.code}): {http_error_detail(exc)}",
+                    status=exc.code,
                 )
                 if exc.code not in RETRYABLE_ENDPOINT_STATUSES:
                     raise last_error from exc
             except (OSError, http.client.HTTPException, ValueError) as exc:
                 if emitted:
-                    raise AntigravityError(f"Cloud Code Assist stream failed: {exc}", status=502) from exc
-                last_error = AntigravityError(f"Cloud Code Assist connection failed: {exc}", status=502)
+                    raise AntigravityError(
+                        f"Cloud Code Assist stream failed: {exc}", status=502
+                    ) from exc
+                last_error = AntigravityError(
+                    f"Cloud Code Assist connection failed: {exc}", status=502
+                )
         raise last_error or AntigravityError("No Antigravity endpoint configured", status=502)
 
     def fetch_available_models(self, *, access_token: str, project_id: str) -> dict[str, Any]:
@@ -138,7 +152,9 @@ class AntigravityClient:
         headers = self._headers(access_token, "application/json")
 
         def ask(endpoint: str) -> dict[str, Any] | AntigravityError | None:
-            request = urllib.request.Request(endpoint + MODELS_PATH, data=body, headers=headers, method="POST")
+            request = urllib.request.Request(
+                endpoint + MODELS_PATH, data=body, headers=headers, method="POST"
+            )
             try:
                 with urllib.request.urlopen(request, timeout=MODELS_TIMEOUT_SECONDS) as response:
                     data = json.loads(response.read().decode("utf-8") or "{}")
@@ -146,9 +162,13 @@ class AntigravityClient:
                 detail = http_error_detail(exc)
                 if exc.code == 401:
                     return TokenExpired()
-                return AntigravityError(f"Cloud Code Assist API error ({exc.code}): {detail}", status=exc.code)
+                return AntigravityError(
+                    f"Cloud Code Assist API error ({exc.code}): {detail}", status=exc.code
+                )
             except (OSError, http.client.HTTPException, ValueError) as exc:
-                return AntigravityError(f"Cloud Code Assist model discovery failed: {exc}", status=502)
+                return AntigravityError(
+                    f"Cloud Code Assist model discovery failed: {exc}", status=502
+                )
             return data if isinstance(data, dict) else None
 
         # Asked together so a slow endpoint costs one timeout, not one per endpoint; map keeps order.
@@ -161,5 +181,7 @@ class AntigravityClient:
         if not payloads:
             if token_expired:
                 raise TokenExpired()  # another endpoint's unrelated failure must not hide it
-            raise last_error or AntigravityError("Antigravity model discovery returned no response", status=502)
+            raise last_error or AntigravityError(
+                "Antigravity model discovery returned no response", status=502
+            )
         return _merge_model_catalogs(payloads)

@@ -3,13 +3,19 @@ import threading
 import unittest
 
 from antigravity_provider.errors import AntigravityError
-from antigravity_provider.hermes_client import ChunkStream, HermesAntigravityClient, openai_completion_object
+from antigravity_provider.hermes_client import (
+    ChunkStream,
+    HermesAntigravityClient,
+    openai_completion_object,
+)
 
 COMPLETION = {
     "id": "chatcmpl-test",
     "object": "chat.completion",
     "model": "google-antigravity/gemini-3.1-pro",
-    "choices": [{"index": 0, "message": {"role": "assistant", "content": "pong"}, "finish_reason": "stop"}],
+    "choices": [
+        {"index": 0, "message": {"role": "assistant", "content": "pong"}, "finish_reason": "stop"}
+    ],
     "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
 }
 CHUNK = {"choices": [{"delta": {"content": "pong"}}]}
@@ -33,14 +39,18 @@ class FakeService:
 
 def create(client, **kwargs):
     return client.chat.completions.create(
-        model="google-antigravity/gemini-3.1-pro", messages=[{"role": "user", "content": "ping"}], **kwargs
+        model="google-antigravity/gemini-3.1-pro",
+        messages=[{"role": "user", "content": "ping"}],
+        **kwargs,
     )
 
 
 class HermesClientTests(unittest.TestCase):
     def test_returns_openai_compatible_object_and_passes_session(self):
         service = FakeService()
-        out = create(HermesAntigravityClient(service=service), _antigravity_session_id="hermes-session")
+        out = create(
+            HermesAntigravityClient(service=service), _antigravity_session_id="hermes-session"
+        )
         self.assertEqual(out.choices[0].message.content, "pong")
         self.assertIsNone(out.choices[0].message.tool_calls)
         self.assertEqual(service.calls[0][2], "hermes-session")
@@ -64,9 +74,9 @@ class HermesClientTests(unittest.TestCase):
         async def exercise():
             service = FakeService()
             result = create(HermesAntigravityClient(service=service))
-            result.choices  # attribute access on the loop thread
+            _ = result.choices  # attribute access on the loop thread
             await result
-            result.usage
+            _ = result.usage
             return service.calls
 
         self.assertEqual(len(asyncio.run(exercise())), 1)
@@ -76,18 +86,24 @@ class HermesClientTests(unittest.TestCase):
         self.assertEqual([c.choices[0].delta.content for c in stream], ["pong"])
 
     def test_propagates_provider_errors(self):
-        client = HermesAntigravityClient(service=FakeService(error=AntigravityError("provider down", status=503)))
+        client = HermesAntigravityClient(
+            service=FakeService(error=AntigravityError("provider down", status=503))
+        )
         with self.assertRaises(AntigravityError) as raised:
             create(client)
         self.assertEqual(raised.exception.status_code, 503)
 
     def test_tool_call_extra_content_stays_a_dict_for_hermes(self):
         extra = {"google": {"thought_signature": "SIG"}}
-        obj = openai_completion_object({"choices": [{"message": {"tool_calls": [{"id": "c", "extra_content": extra}]}}]})
+        obj = openai_completion_object(
+            {"choices": [{"message": {"tool_calls": [{"id": "c", "extra_content": extra}]}}]}
+        )
         self.assertEqual(obj.choices[0].message.tool_calls[0].extra_content, extra)
 
     def test_openai_completion_object_defaults_tool_calls(self):
-        obj = openai_completion_object({"choices": [{"message": {"role": "assistant", "content": "pong"}}]})
+        obj = openai_completion_object(
+            {"choices": [{"message": {"role": "assistant", "content": "pong"}}]}
+        )
         self.assertIsNone(obj.choices[0].message.tool_calls)
 
 

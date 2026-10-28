@@ -5,7 +5,9 @@ from antigravity_provider.models import normalize_effort, normalize_model_id
 
 class ModelTests(unittest.TestCase):
     def test_normalizes_bare_model(self):
-        self.assertEqual(normalize_model_id("gemini-3.8-flash"), "google-antigravity/gemini-3.8-flash")
+        self.assertEqual(
+            normalize_model_id("gemini-3.8-flash"), "google-antigravity/gemini-3.8-flash"
+        )
         self.assertEqual(normalize_model_id("gemini-3.1-pro"), "google-antigravity/gemini-3.1-pro")
 
     def test_normalizes_reasoning_aliases_without_model_specific_hardcoding(self):

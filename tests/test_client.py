@@ -85,22 +85,30 @@ class StreamTests(unittest.TestCase):
     def test_in_stream_error_event_is_raised(self):
         line = b'data: {"error":{"code":429,"message":"quota"}}\n'
         with self.assertRaisesRegex(AntigravityError, "quota"):
-            self.stream(lambda request, timeout: Response([line, b"\n"]), endpoints=("https://only",))
+            self.stream(
+                lambda request, timeout: Response([line, b"\n"]), endpoints=("https://only",)
+            )
 
     def test_in_stream_401_event_is_token_expired(self):
         line = b'data: {"error":{"code":401,"message":"expired"}}\n'
         with self.assertRaises(TokenExpired):
-            self.stream(lambda request, timeout: Response([line, b"\n"]), endpoints=("https://only",))
+            self.stream(
+                lambda request, timeout: Response([line, b"\n"]), endpoints=("https://only",)
+            )
 
     def test_in_stream_error_with_a_text_code_keeps_the_message(self):
         line = b'data: {"error":{"code":"RESOURCE_EXHAUSTED","message":"quota exceeded"}}\n'
         with self.assertRaisesRegex(AntigravityError, "quota exceeded"):
-            self.stream(lambda request, timeout: Response([line, b"\n"]), endpoints=("https://only",))
+            self.stream(
+                lambda request, timeout: Response([line, b"\n"]), endpoints=("https://only",)
+            )
 
     def test_closing_the_stream_closes_the_http_response(self):
         response = Response([PONG, b"\n", PONG, b"\n"])
         client = AntigravityClient(endpoints=["https://only"])
-        with patch("antigravity_provider.client.urllib.request.urlopen", lambda request, timeout: response):
+        with patch(
+            "antigravity_provider.client.urllib.request.urlopen", lambda request, timeout: response
+        ):
             stream = client.stream_generate(access_token="tok", body={})
             next(stream)
             stream.close()
@@ -142,7 +150,10 @@ class ModelDiscoveryTests(unittest.TestCase):
                 raise ConnectionResetError("reset")
 
         client = AntigravityClient(endpoints=["https://only"])
-        with patch("antigravity_provider.client.urllib.request.urlopen", lambda request, timeout: Broken([])):
+        with patch(
+            "antigravity_provider.client.urllib.request.urlopen",
+            lambda request, timeout: Broken([]),
+        ):
             stream = client.stream_generate(access_token="tok", body={})
             next(stream)
             with self.assertRaises(AntigravityError) as raised:
@@ -159,11 +170,15 @@ class ParsingTests(unittest.TestCase):
         self.assertEqual(list(_sse_events([b'data: {"a":2}\n'])), [{"a": 2}])
 
     def test_model_catalog_merge_keeps_first_scalar_and_unions_lists(self):
-        merged = _merge_model_catalogs([
-            {"defaultAgentModelId": "a", "models": {"x": {}}, "ids": [1]},
-            {"defaultAgentModelId": "b", "models": {"y": {}}, "ids": [1, 2]},
-        ])
-        self.assertEqual(merged, {"defaultAgentModelId": "a", "models": {"x": {}, "y": {}}, "ids": [1, 2]})
+        merged = _merge_model_catalogs(
+            [
+                {"defaultAgentModelId": "a", "models": {"x": {}}, "ids": [1]},
+                {"defaultAgentModelId": "b", "models": {"y": {}}, "ids": [1, 2]},
+            ]
+        )
+        self.assertEqual(
+            merged, {"defaultAgentModelId": "a", "models": {"x": {}, "y": {}}, "ids": [1, 2]}
+        )
 
 
 if __name__ == "__main__":
