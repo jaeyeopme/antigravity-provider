@@ -98,6 +98,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: |
-          v="v$(python -c "import re, pathlib; print(re.search(r'\"(.+)\"', pathlib.Path('src/antigravity_provider/__init__.py').read_text()).group(1))")"
+          v="v$(PYTHONPATH=src python -c 'import antigravity_provider; print(antigravity_provider.__version__)')"
           if git ls-remote --exit-code --tags origin "$v" >/dev/null; then echo "$v already tagged"; exit 0; fi
           git tag "$v" && git push origin "$v"
