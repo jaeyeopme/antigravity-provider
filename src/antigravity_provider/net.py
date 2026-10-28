@@ -36,12 +36,16 @@ def request_json(
     elif json_body is not None:
         data = json.dumps(json_body).encode("utf-8")
         headers = {"Content-Type": "application/json", **headers}
-    request = urllib.request.Request(url, data=data, headers=headers, method="POST" if data is not None else "GET")
+    request = urllib.request.Request(
+        url, data=data, headers=headers, method="POST" if data is not None else "GET"
+    )
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
             payload = json.loads(response.read().decode("utf-8") or "{}")
     except urllib.error.HTTPError as exc:
-        raise AntigravityError(f"{error_prefix} ({exc.code}): {http_error_detail(exc)}", status=exc.code) from exc
+        raise AntigravityError(
+            f"{error_prefix} ({exc.code}): {http_error_detail(exc)}", status=exc.code
+        ) from exc
     except (OSError, http.client.HTTPException, ValueError) as exc:
         raise AntigravityError(f"{error_prefix}: {exc}", status=502) from exc
     return payload if isinstance(payload, dict) else {}

@@ -31,21 +31,29 @@ class ProviderProfileTests(unittest.TestCase):
         registered = []
         with patch.dict(sys.modules, fake_hermes(registered)):
             self.assertTrue(hermes_provider.register_provider_profile())
-        catalog = build_catalog({
-            "models": {"gemini-3.5-flash-lite": {}, "claude-sonnet-4-6": {}},
-            "defaultAgentModelId": "claude-sonnet-4-6",
-            "commitMessageModelIds": ["gemini-3.5-flash-lite"],
-        })
+        catalog = build_catalog(
+            {
+                "models": {"gemini-3.5-flash-lite": {}, "claude-sonnet-4-6": {}},
+                "defaultAgentModelId": "claude-sonnet-4-6",
+                "commitMessageModelIds": ["gemini-3.5-flash-lite"],
+            }
+        )
         with patch.object(hermes_provider.catalog_manager, "current", return_value=catalog):
-            self.assertEqual(registered[0].default_aux_model, "google-antigravity/gemini-3.5-flash-lite")
+            self.assertEqual(
+                registered[0].default_aux_model, "google-antigravity/gemini-3.5-flash-lite"
+            )
 
     def test_reasoning_config_becomes_the_reasoning_effort_kwarg(self):
         registered = []
         with patch.dict(sys.modules, fake_hermes(registered)):
             hermes_provider.register_provider_profile()
         extras = registered[0].build_api_kwargs_extras
-        self.assertEqual(extras(reasoning_config={"enabled": False}), ({}, {"reasoning_effort": "off"}))
-        self.assertEqual(extras(reasoning_config={"effort": "xhigh"}), ({}, {"reasoning_effort": "high"}))
+        self.assertEqual(
+            extras(reasoning_config={"enabled": False}), ({}, {"reasoning_effort": "off"})
+        )
+        self.assertEqual(
+            extras(reasoning_config={"effort": "xhigh"}), ({}, {"reasoning_effort": "high"})
+        )
         self.assertEqual(extras(reasoning_config=None), ({}, {}))
 
 

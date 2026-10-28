@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import threading
-from typing import Any, Callable, Iterator, TypeVar
+from collections.abc import Callable, Iterator
+from typing import Any, TypeVar
 
 from .auth import CredentialManager
 from .catalog import CatalogManager, ModelCatalog, catalog_manager
@@ -35,7 +36,9 @@ class AntigravityService:
         except TokenExpired:
             return call(self.credentials.refresh(credentials))
 
-    def catalog(self, *, force: bool = False, credentials: Credentials | None = None) -> ModelCatalog:
+    def catalog(
+        self, *, force: bool = False, credentials: Credentials | None = None
+    ) -> ModelCatalog:
         credentials = credentials or self.credentials.current()
 
         def fetch() -> dict[str, Any]:
@@ -43,7 +46,7 @@ class AntigravityService:
                 credentials,
                 lambda creds: self.client.fetch_available_models(
                     access_token=creds.access_token, project_id=creds.project_id
-                )
+                ),
             )
 
         return self.catalogs.get(project_id=credentials.project_id, fetch=fetch, force=force)
@@ -54,7 +57,9 @@ class AntigravityService:
         try:
             request = parse_chat_request(payload)
         except ValueError as exc:
-            raise AntigravityError(str(exc), status=400, error_type="invalid_request_error") from exc
+            raise AntigravityError(
+                str(exc), status=400, error_type="invalid_request_error"
+            ) from exc
         credentials = self.credentials.current()
         body = build_generate_content_request(
             request,
@@ -68,11 +73,15 @@ class AntigravityService:
         request, body, credentials = self.build_body(payload, session_id=session_id)
 
         def generate(creds: Credentials) -> dict[str, Any]:
-            return collect_response(self.client.stream_generate(access_token=creds.access_token, body=body))
+            return collect_response(
+                self.client.stream_generate(access_token=creds.access_token, body=body)
+            )
 
         return to_openai_completion(request.model, self._with_token(credentials, generate))
 
-    def stream(self, payload: dict[str, Any], *, session_id: str | None = None) -> Iterator[dict[str, Any]]:
+    def stream(
+        self, payload: dict[str, Any], *, session_id: str | None = None
+    ) -> Iterator[dict[str, Any]]:
         """OpenAI stream chunks. Request setup errors raise here, before iteration starts."""
         request, body, credentials = self.build_body(payload, session_id=session_id)
         return to_openai_stream_chunks(request.model, self._upstream(body, credentials))
@@ -80,7 +89,9 @@ class AntigravityService:
     def _upstream(self, body: dict[str, Any], credentials: Credentials) -> Iterator[dict[str, Any]]:
         emitted = False
         try:
-            for event in self.client.stream_generate(access_token=credentials.access_token, body=body):
+            for event in self.client.stream_generate(
+                access_token=credentials.access_token, body=body
+            ):
                 emitted = True
                 yield event
         except TokenExpired:

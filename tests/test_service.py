@@ -5,12 +5,15 @@ from pathlib import Path
 
 from antigravity_provider.auth import CredentialManager
 from antigravity_provider.catalog import CatalogManager
-from antigravity_provider.credentials import CredentialStore, Credentials
+from antigravity_provider.credentials import Credentials, CredentialStore
 from antigravity_provider.errors import AntigravityError, TokenExpired
 from antigravity_provider.service import AntigravityService
 
 PONG = {"candidates": [{"content": {"parts": [{"text": "pong"}]}, "finishReason": "STOP"}]}
-PAYLOAD = {"model": "google-antigravity/gemini-3.1-pro", "messages": [{"role": "user", "content": "ping"}]}
+PAYLOAD = {
+    "model": "google-antigravity/gemini-3.1-pro",
+    "messages": [{"role": "user", "content": "ping"}],
+}
 
 
 class FakeClient:
@@ -45,19 +48,33 @@ class ServiceTests(unittest.TestCase):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
         self.store = CredentialStore(Path(tmp.name) / "oauth.json")
-        self.store.save(Credentials(access_token="old", refresh_token="ref", project_id="p", expires_at=time.time() + 3600))
+        self.store.save(
+            Credentials(
+                access_token="old",
+                refresh_token="ref",
+                project_id="p",
+                expires_at=time.time() + 3600,
+            )
+        )
         self.refreshes = []
         self.credentials = CredentialManager(
             store_factory=lambda: self.store,
             keychain_loader=lambda: None,
-            refresh_tokens=lambda token: self.refreshes.append(token) or {
-                "access_token": "new", "refresh_token": "rotated", "expires_at": time.time() + 3600
-            },
+            refresh_tokens=lambda token: (
+                self.refreshes.append(token)
+                or {
+                    "access_token": "new",
+                    "refresh_token": "rotated",
+                    "expires_at": time.time() + 3600,
+                }
+            ),
         )
         self.catalogs = CatalogManager(path=Path(tmp.name) / "models.json")
 
     def service(self, client):
-        return AntigravityService(credentials=self.credentials, client=client, catalogs=self.catalogs)
+        return AntigravityService(
+            credentials=self.credentials, client=client, catalogs=self.catalogs
+        )
 
     def test_complete_in_process(self):
         client = FakeClient()
@@ -104,7 +121,9 @@ class ServiceTests(unittest.TestCase):
         client = FakeClient()
         service = self.service(client)
         service.complete(PAYLOAD, session_id="s1")
-        service.complete({**PAYLOAD, "messages": [{"role": "user", "content": "other"}]}, session_id="s1")
+        service.complete(
+            {**PAYLOAD, "messages": [{"role": "user", "content": "other"}]}, session_id="s1"
+        )
         service.complete(PAYLOAD, session_id="s2")
         ids = [body["request"]["sessionId"] for body in client.bodies]
         self.assertEqual(ids[0], ids[1])

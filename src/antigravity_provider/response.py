@@ -5,7 +5,8 @@ from __future__ import annotations
 import json
 import time
 import uuid
-from typing import Any, Iterable, Iterator
+from collections.abc import Iterable, Iterator
+from typing import Any
 
 from .errors import AntigravityError
 from .models import normalize_model_id
@@ -49,7 +50,9 @@ def _empty_stream(saw_part: bool, finish: str | None) -> AntigravityError | None
 def _usage(response: dict[str, Any]) -> dict[str, int]:
     usage = response.get("usageMetadata") or {}
     prompt = int(usage.get("promptTokenCount") or 0)
-    completion = int(usage.get("candidatesTokenCount") or 0) + int(usage.get("thoughtsTokenCount") or 0)
+    completion = int(usage.get("candidatesTokenCount") or 0) + int(
+        usage.get("thoughtsTokenCount") or 0
+    )
     total = int(usage.get("totalTokenCount") or prompt + completion)
     return {"prompt_tokens": prompt, "completion_tokens": completion, "total_tokens": total}
 
@@ -91,7 +94,9 @@ def collect_response(chunks: Iterable[dict[str, Any]]) -> dict[str, Any]:
     if finish is None and response_id:
         raise AntigravityError("Antigravity stream ended without a finish reason", status=502)
     response: dict[str, Any] = {
-        "candidates": [{"content": {"role": "model", "parts": parts}, "finishReason": finish or "STOP"}],
+        "candidates": [
+            {"content": {"role": "model", "parts": parts}, "finishReason": finish or "STOP"}
+        ],
         "usageMetadata": usage,
     }
     if response_id:
@@ -135,7 +140,9 @@ def to_openai_completion(model: str, response: dict[str, Any]) -> dict[str, Any]
     }
 
 
-def to_openai_stream_chunks(model: str, events: Iterable[dict[str, Any]]) -> Iterator[dict[str, Any]]:
+def to_openai_stream_chunks(
+    model: str, events: Iterable[dict[str, Any]]
+) -> Iterator[dict[str, Any]]:
     completion_id = "chatcmpl-" + uuid.uuid4().hex
     created = int(time.time())
     public_model = normalize_model_id(model)
@@ -146,7 +153,9 @@ def to_openai_stream_chunks(model: str, events: Iterable[dict[str, Any]]) -> Ite
     finish: str | None = None
     usage: dict[str, int] | None = None
 
-    def chunk(delta: dict[str, Any], finish_reason: str | None = None, usage: dict[str, int] | None = None) -> dict[str, Any]:
+    def chunk(
+        delta: dict[str, Any], finish_reason: str | None = None, usage: dict[str, int] | None = None
+    ) -> dict[str, Any]:
         value: dict[str, Any] = {
             "id": completion_id,
             "object": "chat.completion.chunk",

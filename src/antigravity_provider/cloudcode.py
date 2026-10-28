@@ -5,7 +5,8 @@ from __future__ import annotations
 import os
 import platform
 import time
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from .errors import AntigravityError
 from .net import request_json
@@ -33,14 +34,28 @@ def antigravity_user_agent() -> str:
         or DEFAULT_CLIENT_VERSION
     )
     system = platform.system().lower()
-    os_name = "windows" if system.startswith("win") else ("darwin" if system == "darwin" else system or "linux")
+    os_name = (
+        "windows"
+        if system.startswith("win")
+        else ("darwin" if system == "darwin" else system or "linux")
+    )
     machine = platform.machine().lower()
-    arch = "amd64" if machine in {"x86_64", "x64"} else ("386" if machine in {"i386", "i686"} else machine or "arm64")
+    arch = (
+        "amd64"
+        if machine in {"x86_64", "x64"}
+        else ("386" if machine in {"i386", "i686"} else machine or "arm64")
+    )
     return f"antigravity/hub/{version} {os_name}/{arch}"
 
 
 def _post_json(url: str, body: dict[str, Any], headers: dict[str, str]) -> dict[str, Any]:
-    return request_json(url, headers=headers, json_body=body, timeout=120, error_prefix="Cloud Code Assist API error")
+    return request_json(
+        url,
+        headers=headers,
+        json_body=body,
+        timeout=120,
+        error_prefix="Cloud Code Assist API error",
+    )
 
 
 def read_project_id(value: object) -> str | None:
@@ -55,7 +70,12 @@ def read_default_tier(allowed_tiers: object) -> str:
     if not isinstance(allowed_tiers, list):
         return TIER_LEGACY
     for tier in allowed_tiers:
-        if isinstance(tier, dict) and tier.get("isDefault") and isinstance(tier.get("id"), str) and tier["id"]:
+        if (
+            isinstance(tier, dict)
+            and tier.get("isDefault")
+            and isinstance(tier.get("id"), str)
+            and tier["id"]
+        ):
             return tier["id"]
     return TIER_LEGACY
 

@@ -6,9 +6,28 @@ from typing import Any
 # The only fields of the Gemini ``Schema`` message. Cloud Code parses function declarations into it
 # for every model, so any other field (``const``, ``exclusiveMinimum``, ...) fails the request.
 _SCHEMA_FIELDS = {
-    "type", "format", "title", "description", "nullable", "enum", "maxItems", "minItems", "properties", "required",
-    "minProperties", "maxProperties", "minLength", "maxLength", "pattern", "example", "anyOf", "propertyOrdering",
-    "default", "items", "minimum", "maximum",
+    "type",
+    "format",
+    "title",
+    "description",
+    "nullable",
+    "enum",
+    "maxItems",
+    "minItems",
+    "properties",
+    "required",
+    "minProperties",
+    "maxProperties",
+    "minLength",
+    "maxLength",
+    "pattern",
+    "example",
+    "anyOf",
+    "propertyOrdering",
+    "default",
+    "items",
+    "minimum",
+    "maximum",
 }
 
 
@@ -57,7 +76,11 @@ def to_gemini_schema(schema: Any) -> dict[str, Any]:
             for key, nested in branch.items():
                 if key == "properties" and isinstance(nested, dict):
                     out.setdefault("properties", {}).update(
-                        {name: prop for name, prop in nested.items() if name not in out["properties"]}
+                        {
+                            name: prop
+                            for name, prop in nested.items()
+                            if name not in out["properties"]
+                        }
                     )
                 elif key == "required" and isinstance(nested, list):
                     out["required"] = list(dict.fromkeys([*out.get("required", []), *nested]))
@@ -71,15 +94,16 @@ def to_gemini_schema(schema: Any) -> dict[str, Any]:
         if all(branch == branches[0] for branch in branches[1:]):
             return deepcopy(branches[0])
 
-        descriptions = list(dict.fromkeys(
-            branch["description"] for branch in branches
-            if isinstance(branch.get("description"), str) and branch["description"]
-        ))
+        descriptions = list(
+            dict.fromkeys(
+                branch["description"]
+                for branch in branches
+                if isinstance(branch.get("description"), str) and branch["description"]
+            )
+        )
         if all(branch.get("type") == "object" for branch in branches):
             property_names = dict.fromkeys(
-                name
-                for branch in branches
-                for name in (branch.get("properties") or {})
+                name for branch in branches for name in (branch.get("properties") or {})
             )
             properties = {}
             for name in property_names:
@@ -88,7 +112,9 @@ def to_gemini_schema(schema: Any) -> dict[str, Any]:
                     for branch in branches
                     if name in (branch.get("properties") or {})
                 ]
-                properties[name] = widen(candidates) if len(candidates) > 1 else deepcopy(candidates[0])
+                properties[name] = (
+                    widen(candidates) if len(candidates) > 1 else deepcopy(candidates[0])
+                )
             required = set(branches[0].get("required") or [])
             for branch in branches[1:]:
                 required &= set(branch.get("required") or [])
@@ -122,7 +148,9 @@ def to_gemini_schema(schema: Any) -> dict[str, Any]:
                 target = pointer(ref)
                 # A recursive, remote, or missing reference accepts any value there: failing would
                 # reject every request while the tool is loaded.
-                resolved = clean(deepcopy(target), resolving | {ref}) if ref not in resolving else {}
+                resolved = (
+                    clean(deepcopy(target), resolving | {ref}) if ref not in resolving else {}
+                )
                 if not isinstance(resolved, dict):
                     resolved = {}
                 siblings = {key: nested for key, nested in value.items() if key != "$ref"}
@@ -132,7 +160,12 @@ def to_gemini_schema(schema: Any) -> dict[str, Any]:
 
             if isinstance(value.get("allOf"), list):
                 siblings = {key: nested for key, nested in value.items() if key != "allOf"}
-                return combine([*(clean(branch, resolving) for branch in value["allOf"]), clean(siblings, resolving)])
+                return combine(
+                    [
+                        *(clean(branch, resolving) for branch in value["allOf"]),
+                        clean(siblings, resolving),
+                    ]
+                )
 
             union_key = "anyOf" if "anyOf" in value else ("oneOf" if "oneOf" in value else None)
             if union_key:
@@ -140,10 +173,15 @@ def to_gemini_schema(schema: Any) -> dict[str, Any]:
                 if not isinstance(branches, list) or not branches:
                     branches = [{}]
                 cleaned = [
-                    clean(branch, resolving) for branch in branches
+                    clean(branch, resolving)
+                    for branch in branches
                     if not (isinstance(branch, dict) and branch.get("type") == "null")
                 ]
-                merged = cleaned[0] if len(cleaned) == 1 and isinstance(cleaned[0], dict) else widen(cleaned)
+                merged = (
+                    cleaned[0]
+                    if len(cleaned) == 1 and isinstance(cleaned[0], dict)
+                    else widen(cleaned)
+                )
                 if len(cleaned) < len(branches):
                     merged["nullable"] = True
                 siblings = {key: nested for key, nested in value.items() if key != union_key}
@@ -167,17 +205,27 @@ def to_gemini_schema(schema: Any) -> dict[str, Any]:
                     continue
                 if key == "properties" and isinstance(nested, dict):
                     # Keys here are parameter names, not schema keywords: keep them all.
-                    cleaned_value[key] = {name: clean(prop, resolving) for name, prop in nested.items()}
+                    cleaned_value[key] = {
+                        name: clean(prop, resolving) for name, prop in nested.items()
+                    }
                 elif key == "items":
                     cleaned_value[key] = clean(nested, resolving)
                 elif key == "enum" and isinstance(nested, list):
-                    cleaned_value[key] = [item for item in map(_enum_string, nested) if item is not None]
+                    cleaned_value[key] = [
+                        item for item in map(_enum_string, nested) if item is not None
+                    ]
                 else:
                     cleaned_value[key] = nested  # default/example values are data, not schemas
-            if cleaned_value.get("type") == "array" and not isinstance(cleaned_value.get("items"), dict):
+            if cleaned_value.get("type") == "array" and not isinstance(
+                cleaned_value.get("items"), dict
+            ):
                 cleaned_value["items"] = {}
             if isinstance(cleaned_value.get("required"), list):
-                defined = cleaned_value.get("properties") if isinstance(cleaned_value.get("properties"), dict) else {}
+                defined = (
+                    cleaned_value.get("properties")
+                    if isinstance(cleaned_value.get("properties"), dict)
+                    else {}
+                )
                 required = [name for name in cleaned_value["required"] if name in defined]
                 if required:
                     cleaned_value["required"] = required

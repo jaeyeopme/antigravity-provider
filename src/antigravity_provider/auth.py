@@ -9,15 +9,16 @@ from __future__ import annotations
 
 import sys
 import threading
+from collections.abc import Callable
 from dataclasses import replace
-from typing import Any, Callable
+from typing import Any
 
 from . import oauth
 from .cloudcode import load_or_onboard_project
 from .credentials import (
     SOURCE_BROWSER,
-    CredentialStore,
     Credentials,
+    CredentialStore,
     load_agy_keychain_credentials,
 )
 from .errors import AntigravityError, TokenExpired
@@ -86,7 +87,11 @@ class CredentialManager:
             return refreshed
         with self._lock:
             cached = self._keychain
-            if cached is not None and cached.access_token and cached.access_token != rejected.access_token:
+            if (
+                cached is not None
+                and cached.access_token
+                and cached.access_token != rejected.access_token
+            ):
                 return cached  # another request already refreshed it
             refreshed = self._prepare_keychain(replace(rejected, access_token=""))
             self._keychain = refreshed
@@ -107,7 +112,11 @@ class CredentialManager:
             # `agy` may have signed in again since this process read the Keychain, revoking the
             # refresh token it read then.
             reloaded = self._keychain_loader()
-            if reloaded is None or not reloaded.usable or reloaded.refresh_token == credentials.refresh_token:
+            if (
+                reloaded is None
+                or not reloaded.usable
+                or reloaded.refresh_token == credentials.refresh_token
+            ):
                 raise
             return self._prepare(reloaded)
 
@@ -121,10 +130,14 @@ class CredentialManager:
                     status=401,
                     error_type="invalid_request_error",
                 )
-            credentials = replace(credentials, project_id=self._discover_project(credentials.access_token))
+            credentials = replace(
+                credentials, project_id=self._discover_project(credentials.access_token)
+            )
         return credentials
 
-    def login(self, *, use_keychain: bool = True, open_browser: bool = True, timeout: int = 300) -> Credentials:
+    def login(
+        self, *, use_keychain: bool = True, open_browser: bool = True, timeout: int = 300
+    ) -> Credentials:
         store = self.store()
         if use_keychain:
             keychain = self._keychain_loader()
@@ -132,7 +145,10 @@ class CredentialManager:
                 try:
                     prepared = self._with_email(self._prepare(keychain))
                 except AntigravityError as exc:
-                    print(f"The agy Keychain credential did not work ({exc.message}); using browser sign-in.", file=sys.stderr)
+                    print(
+                        f"The agy Keychain credential did not work ({exc.message}); using browser sign-in.",
+                        file=sys.stderr,
+                    )
                 else:
                     store.delete()
                     with self._lock:
@@ -173,4 +189,3 @@ class CredentialManager:
     def clear_cache(self) -> None:
         with self._lock:
             self._keychain, self._keychain_loaded = None, False
-

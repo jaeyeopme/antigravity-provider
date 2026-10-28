@@ -7,10 +7,11 @@ import json
 import subprocess
 import sys
 import time
+from collections.abc import Callable
 from dataclasses import asdict, dataclass, replace
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from .fileio import read_json, write_private_json
 from .paths import oauth_credentials_path
@@ -52,7 +53,7 @@ class Credentials:
     source: str = ""
 
     @classmethod
-    def from_mapping(cls, data: dict[str, Any], *, source: str) -> "Credentials":
+    def from_mapping(cls, data: dict[str, Any], *, source: str) -> Credentials:
         """Accept current and legacy key spellings in one place."""
         return cls(
             access_token=_first_str(data, "access_token", "access", "token"),
@@ -82,7 +83,7 @@ class Credentials:
             return False
         return (now if now is not None else time.time()) + REFRESH_SKEW_SECONDS >= self.expires_at
 
-    def with_tokens(self, tokens: dict[str, Any]) -> "Credentials":
+    def with_tokens(self, tokens: dict[str, Any]) -> Credentials:
         return replace(
             self,
             access_token=str(tokens["access_token"]),
@@ -99,7 +100,7 @@ class CredentialStore:
         self.path = Path(path).expanduser()
 
     @classmethod
-    def default(cls) -> "CredentialStore":
+    def default(cls) -> CredentialStore:
         return cls(oauth_credentials_path())
 
     def load(self) -> Credentials | None:

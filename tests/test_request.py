@@ -1,22 +1,59 @@
 import unittest
 
 from antigravity_provider.catalog import build_catalog
-from antigravity_provider.request import ChatRequest, parse_chat_request, SKIP_THOUGHT_SIGNATURE, build_generate_content_request
 from antigravity_provider.models import normalize_model_id
+from antigravity_provider.request import (
+    SKIP_THOUGHT_SIGNATURE,
+    ChatRequest,
+    build_generate_content_request,
+    parse_chat_request,
+)
 
 # One model of each shape the request builder treats differently. Routing rules themselves are
 # tested in test_catalog; these tests check what ends up in the request body.
-CATALOG = build_catalog({
-    "models": {
-        "gemini-3.1-pro-low": {"model": "M_PRO_LOW", "maxOutputTokens": 65535, "supportsThinking": True, "thinkingBudget": 1001},
-        "gemini-3.8-flash-tiered": {"model": "M_FLASH_TIERED", "maxOutputTokens": 65536, "supportsThinking": True, "thinkingBudget": -1},
-        "claude-sonnet-4-6": {"maxOutputTokens": 64000, "supportsThinking": True, "thinkingBudget": 1024},
-        "gpt-oss-120b-medium": {"model": "M_GPT_OSS", "maxOutputTokens": 32768, "supportsThinking": True, "thinkingBudget": 8192, "usedNonGeminiModel": True},
-    },
-})
+CATALOG = build_catalog(
+    {
+        "models": {
+            "gemini-3.1-pro-low": {
+                "model": "M_PRO_LOW",
+                "maxOutputTokens": 65535,
+                "supportsThinking": True,
+                "thinkingBudget": 1001,
+            },
+            "gemini-3.8-flash-tiered": {
+                "model": "M_FLASH_TIERED",
+                "maxOutputTokens": 65536,
+                "supportsThinking": True,
+                "thinkingBudget": -1,
+            },
+            "claude-sonnet-4-6": {
+                "maxOutputTokens": 64000,
+                "supportsThinking": True,
+                "thinkingBudget": 1024,
+            },
+            "gpt-oss-120b-medium": {
+                "model": "M_GPT_OSS",
+                "maxOutputTokens": 32768,
+                "supportsThinking": True,
+                "thinkingBudget": 8192,
+                "usedNonGeminiModel": True,
+            },
+        },
+    }
+)
 
 
-def build(*, model, messages, project_id="p", tools=None, reasoning_effort=None, session_id=None, tool_choice=None, max_tokens=None):
+def build(
+    *,
+    model,
+    messages,
+    project_id="p",
+    tools=None,
+    reasoning_effort=None,
+    session_id=None,
+    tool_choice=None,
+    max_tokens=None,
+):
     request = ChatRequest(
         model=normalize_model_id(model),
         messages=messages,
@@ -25,7 +62,9 @@ def build(*, model, messages, project_id="p", tools=None, reasoning_effort=None,
         reasoning_effort=reasoning_effort,
         max_tokens=max_tokens,
     )
-    return build_generate_content_request(request, project_id=project_id, session_id=session_id, catalog=CATALOG)
+    return build_generate_content_request(
+        request, project_id=project_id, session_id=session_id, catalog=CATALOG
+    )
 
 
 class RequestTests(unittest.TestCase):
@@ -54,14 +93,20 @@ class RequestTests(unittest.TestCase):
             model="google-antigravity/gemini-3.1-pro",
             project_id="p",
             messages=[{"role": "user", "content": "call tool"}],
-            tools=[{
-                "type": "function",
-                "function": {
-                    "name": "get_time",
-                    "description": "Get time",
-                    "parameters": {"type": "object", "properties": {}, "additionalProperties": False},
-                },
-            }],
+            tools=[
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "get_time",
+                        "description": "Get time",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {},
+                            "additionalProperties": False,
+                        },
+                    },
+                }
+            ],
             reasoning_effort="low",
         )
         self.assertNotIn("systemInstruction", body["request"])
@@ -69,19 +114,36 @@ class RequestTests(unittest.TestCase):
         self.assertEqual(tools[0]["functionDeclarations"][0]["name"], "get_time")
         self.assertIn("parameters", tools[0]["functionDeclarations"][0])
         self.assertNotIn("additionalProperties", tools[0]["functionDeclarations"][0]["parameters"])
-        self.assertEqual(body["request"]["toolConfig"]["functionCallingConfig"]["mode"], "VALIDATED")
+        self.assertEqual(
+            body["request"]["toolConfig"]["functionCallingConfig"]["mode"], "VALIDATED"
+        )
 
     def test_tool_choice_controls_the_function_calling_mode(self):
-        tools = [{"type": "function", "function": {"name": "f", "parameters": {"type": "object", "properties": {}}}}]
+        tools = [
+            {
+                "type": "function",
+                "function": {"name": "f", "parameters": {"type": "object", "properties": {}}},
+            }
+        ]
         cases = [
             ("none", {"mode": "NONE"}),
             ("required", {"mode": "ANY"}),
             ("auto", {"mode": "VALIDATED"}),
-            ({"type": "function", "function": {"name": "f"}}, {"mode": "ANY", "allowedFunctionNames": ["f"]}),
+            (
+                {"type": "function", "function": {"name": "f"}},
+                {"mode": "ANY", "allowedFunctionNames": ["f"]},
+            ),
         ]
         for choice, expected in cases:
-            body = build(model="gemini-3.1-pro", messages=[{"role": "user", "content": "x"}], tools=tools, tool_choice=choice)
-            self.assertEqual(body["request"]["toolConfig"]["functionCallingConfig"], expected, choice)
+            body = build(
+                model="gemini-3.1-pro",
+                messages=[{"role": "user", "content": "x"}],
+                tools=tools,
+                tool_choice=choice,
+            )
+            self.assertEqual(
+                body["request"]["toolConfig"]["functionCallingConfig"], expected, choice
+            )
 
     def test_gemini_38_flash_tiered_wire_routing(self):
         for effort, expected_budget in [("high", -1), ("medium", 4000), ("low", 1000)]:
@@ -93,7 +155,10 @@ class RequestTests(unittest.TestCase):
             )
             self.assertEqual(body["model"], "gemini-3.8-flash-tiered")
             self.assertEqual(body["request"]["labels"]["model_enum"], "M_FLASH_TIERED")
-            self.assertEqual(body["request"]["generationConfig"]["thinkingConfig"]["thinkingBudget"], expected_budget)
+            self.assertEqual(
+                body["request"]["generationConfig"]["thinkingConfig"]["thinkingBudget"],
+                expected_budget,
+            )
 
     def test_gpt_oss_120b_maps_to_medium_wire_model_and_labels(self):
         body = build(
@@ -103,7 +168,9 @@ class RequestTests(unittest.TestCase):
             reasoning_effort="high",
         )
         self.assertEqual(body["model"], "gpt-oss-120b-medium")
-        self.assertEqual(body["request"]["generationConfig"]["thinkingConfig"]["thinkingBudget"], 8192)
+        self.assertEqual(
+            body["request"]["generationConfig"]["thinkingConfig"]["thinkingBudget"], 8192
+        )
         self.assertEqual(body["request"]["labels"]["model_enum"], "M_GPT_OSS")
         self.assertEqual(body["request"]["labels"]["used_non_gemini_model"], "true")
 
@@ -138,7 +205,16 @@ class RequestTests(unittest.TestCase):
             model="google-antigravity/gemini-3.1-pro",
             project_id="p",
             messages=[
-                {"role": "assistant", "tool_calls": [{"id": "call_1", "type": "function", "function": {"name": "get_time", "arguments": "{}"}}]},
+                {
+                    "role": "assistant",
+                    "tool_calls": [
+                        {
+                            "id": "call_1",
+                            "type": "function",
+                            "function": {"name": "get_time", "arguments": "{}"},
+                        }
+                    ],
+                },
                 {"role": "tool", "tool_call_id": "call_1", "content": '{"time":"now"}'},
             ],
             tools=[],
@@ -154,26 +230,49 @@ class RequestTests(unittest.TestCase):
             {"type": "image_url", "image_url": {"url": "data:image/png;base64,AAAA"}},
             {"type": "image_url", "image_url": {"url": "https://example.com/remote.png"}},
         ]
-        body = build(model="gemini-3-flash", messages=[
-            {"role": "assistant", "tool_calls": [{"id": "c1", "type": "function", "function": {"name": "shot", "arguments": "{}"}}]},
-            {"role": "tool", "tool_call_id": "c1", "content": content},
-        ])
+        body = build(
+            model="gemini-3-flash",
+            messages=[
+                {
+                    "role": "assistant",
+                    "tool_calls": [
+                        {
+                            "id": "c1",
+                            "type": "function",
+                            "function": {"name": "shot", "arguments": "{}"},
+                        }
+                    ],
+                },
+                {"role": "tool", "tool_call_id": "c1", "content": content},
+            ],
+        )
         parts = body["request"]["contents"][-1]["parts"]
         self.assertEqual(len(parts), 1)  # an image beside the response breaks gpt-oss routes
         response = parts[0]["functionResponse"]
         self.assertEqual(response["response"]["output"], "Screenshot captured.\n[image omitted]")
-        self.assertEqual(response["parts"], [{"inlineData": {"mimeType": "image/png", "data": "AAAA"}}])
+        self.assertEqual(
+            response["parts"], [{"inlineData": {"mimeType": "image/png", "data": "AAAA"}}]
+        )
 
     def test_claude_max_tokens_stays_above_thinking_budget(self):
-        body = build(model="claude-sonnet-4-6", messages=[{"role": "user", "content": "hi"}], reasoning_effort="low", max_tokens=64)
+        body = build(
+            model="claude-sonnet-4-6",
+            messages=[{"role": "user", "content": "hi"}],
+            reasoning_effort="low",
+            max_tokens=64,
+        )
         config = body["request"]["generationConfig"]
         self.assertGreater(config["maxOutputTokens"], config["thinkingConfig"]["thinkingBudget"])
         self.assertEqual(config["maxOutputTokens"], config["thinkingConfig"]["thinkingBudget"] + 64)
 
     def test_gemini_max_tokens_is_passed_through(self):
-        body = build(model="gemini-3.1-pro", messages=[{"role": "user", "content": "hi"}], reasoning_effort="low", max_tokens=64)
+        body = build(
+            model="gemini-3.1-pro",
+            messages=[{"role": "user", "content": "hi"}],
+            reasoning_effort="low",
+            max_tokens=64,
+        )
         self.assertEqual(body["request"]["generationConfig"]["maxOutputTokens"], 64)
-
 
     def _tool_history(self, model, extra_content=None):
         tool_call = {"id": "c1", "type": "function", "function": {"name": "f", "arguments": "{}"}}
@@ -198,7 +297,9 @@ class RequestTests(unittest.TestCase):
 
     def test_uses_placeholder_signature_only_when_history_has_none(self):
         body = self._tool_history("gemini-3.1-pro")
-        self.assertEqual(body["request"]["contents"][1]["parts"][0]["thoughtSignature"], SKIP_THOUGHT_SIGNATURE)
+        self.assertEqual(
+            body["request"]["contents"][1]["parts"][0]["thoughtSignature"], SKIP_THOUGHT_SIGNATURE
+        )
 
     def test_replayed_tool_call_and_result_carry_the_call_id(self):
         for model in ("claude-sonnet-4-6", "gpt-oss-120b", "gemini-3.1-pro"):
@@ -212,8 +313,12 @@ class RequestTests(unittest.TestCase):
 
     def test_parallel_calls_keep_signature_only_where_backend_put_it(self):
         calls = [
-            {"id": "a", "type": "function", "function": {"name": "f", "arguments": "{}"},
-             "extra_content": {"google": {"thought_signature": "SIG"}}},
+            {
+                "id": "a",
+                "type": "function",
+                "function": {"name": "f", "arguments": "{}"},
+                "extra_content": {"google": {"thought_signature": "SIG"}},
+            },
             {"id": "b", "type": "function", "function": {"name": "g", "arguments": "{}"}},
         ]
         body = build(model="gemini-3.1-pro", messages=[{"role": "assistant", "tool_calls": calls}])
@@ -230,31 +335,41 @@ class RequestTests(unittest.TestCase):
         self.assertIsNone(request.max_tokens)
 
     def test_tool_with_a_remote_schema_ref_still_sends_the_request(self):
-        tools = [{"type": "function", "function": {"name": "remote", "parameters": {"$ref": "https://x/schema"}}}]
-        body = build(model="gemini-3.1-pro", messages=[{"role": "user", "content": "x"}], tools=tools)
+        tools = [
+            {
+                "type": "function",
+                "function": {"name": "remote", "parameters": {"$ref": "https://x/schema"}},
+            }
+        ]
+        body = build(
+            model="gemini-3.1-pro", messages=[{"role": "user", "content": "x"}], tools=tools
+        )
         declaration = body["request"]["tools"][0]["functionDeclarations"][0]
         self.assertEqual(declaration["parameters"], {"type": "object", "properties": {}})
 
     def test_parses_model_messages_and_reasoning(self):
-        req = parse_chat_request({
-            "model": "gemini-3.1-pro",
-            "reasoning_effort": "high",
-            "messages": [{"role": "user", "content": "ping"}],
-        })
+        req = parse_chat_request(
+            {
+                "model": "gemini-3.1-pro",
+                "reasoning_effort": "high",
+                "messages": [{"role": "user", "content": "ping"}],
+            }
+        )
         self.assertEqual(req.model, "google-antigravity/gemini-3.1-pro")
         self.assertEqual(req.reasoning_effort, "high")
         self.assertEqual(req.messages[0]["content"], "ping")
 
     def test_parses_hermes_extra_body_reasoning_and_completion_tokens(self):
-        req = parse_chat_request({
-            "model": "gemini-3.1-pro",
-            "messages": [{"role": "user", "content": "ping"}],
-            "extra_body": {"reasoning": {"effort": "low"}},
-            "max_completion_tokens": 123,
-        })
+        req = parse_chat_request(
+            {
+                "model": "gemini-3.1-pro",
+                "messages": [{"role": "user", "content": "ping"}],
+                "extra_body": {"reasoning": {"effort": "low"}},
+                "max_completion_tokens": 123,
+            }
+        )
         self.assertEqual(req.reasoning_effort, "low")
         self.assertEqual(req.max_tokens, 123)
-
 
 
 if __name__ == "__main__":

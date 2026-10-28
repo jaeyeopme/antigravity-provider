@@ -3,13 +3,14 @@ from __future__ import annotations
 import hashlib
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from .fileio import read_json, write_private_json
-from .paths import model_cache_path
 from .models import DEFAULT_MODEL, normalize_effort, normalize_model_id, strip_provider_prefix
+from .paths import model_cache_path
 
 CATALOG_TTL_SECONDS = 4 * 60 * 60
 # After a failed refresh, wait this long before calling discovery again.
@@ -157,9 +158,13 @@ def _route_spec(runtime_id: str, info: dict[str, Any]) -> RouteSpec:
         wire_model=runtime_id,
         model_enum=info.get("model") if isinstance(info.get("model"), str) else None,
         max_output_tokens=maximum if isinstance(maximum, int) and maximum > 0 else 65535,
-        supports_thinking=info.get("supportsThinking") if isinstance(info.get("supportsThinking"), bool) else None,
+        supports_thinking=info.get("supportsThinking")
+        if isinstance(info.get("supportsThinking"), bool)
+        else None,
         thinking_budget=budget if isinstance(budget, int) else None,
-        used_non_gemini_model=bool(info.get("usedNonGeminiModel") or runtime_id.startswith("gpt-oss-")),
+        used_non_gemini_model=bool(
+            info.get("usedNonGeminiModel") or runtime_id.startswith("gpt-oss-")
+        ),
     )
 
 
@@ -180,7 +185,11 @@ def _collect_runtime_ids(value: Any, known: set[str], found: set[str]) -> None:
 
 def _selectable(runtime_id: str, info: dict[str, Any], advertised: set[str]) -> bool:
     lower = runtime_id.lower()
-    if info.get("isInternal") is True or "image" in lower or lower.startswith(("chat_", "tab_", "model_")):
+    if (
+        info.get("isInternal") is True
+        or "image" in lower
+        or lower.startswith(("chat_", "tab_", "model_"))
+    ):
         return False
     if not runtime_id or any(char.isspace() for char in runtime_id):
         return False
@@ -200,7 +209,9 @@ def build_catalog(payload: dict[str, Any], fallback: ModelCatalog | None = None)
     raw_models = payload.get("models") if isinstance(payload, dict) else None
     if not isinstance(raw_models, dict):
         raw_models = {}
-    known = {key for key, value in raw_models.items() if isinstance(key, str) and isinstance(value, dict)}
+    known = {
+        key for key, value in raw_models.items() if isinstance(key, str) and isinstance(value, dict)
+    }
     advertised: set[str] = set()
     _collect_runtime_ids(payload.get("agentModelSorts"), known, advertised)
     _collect_runtime_ids(payload.get("tieredModelIds"), known, advertised)
@@ -251,10 +262,16 @@ def build_catalog(payload: dict[str, Any], fallback: ModelCatalog | None = None)
             group.tiered = None
 
     raw_default = payload.get("defaultAgentModelId") or payload.get("defaultAgentModel")
-    default_public = runtime_to_public.get(str(raw_default), str(raw_default)) if raw_default else ""
-    default_model = normalize_model_id(default_public) if default_public in groups else DEFAULT_MODEL
+    default_public = (
+        runtime_to_public.get(str(raw_default), str(raw_default)) if raw_default else ""
+    )
+    default_model = (
+        normalize_model_id(default_public) if default_public in groups else DEFAULT_MODEL
+    )
     # The backend's own cheap pick for side tasks, if this account lists it.
-    tiered = payload.get("tieredModelIds") if isinstance(payload.get("tieredModelIds"), dict) else {}
+    tiered = (
+        payload.get("tieredModelIds") if isinstance(payload.get("tieredModelIds"), dict) else {}
+    )
     cheap = [*(payload.get("commitMessageModelIds") or []), *(tiered.get("flashLite") or [])]
     aux_public = next((runtime_to_public[m] for m in cheap if m in runtime_to_public), "")
     return ModelCatalog(
@@ -269,18 +286,77 @@ def build_catalog(payload: dict[str, Any], fallback: ModelCatalog | None = None)
 
 _SEED_PAYLOAD = {
     "models": {
-        "gemini-3.8-flash-tiered": {"model": "MODEL_PLACEHOLDER_M322", "maxOutputTokens": 65536, "supportsThinking": True, "thinkingBudget": -1},
-        "gemini-3.7-flash-tiered": {"model": "MODEL_PLACEHOLDER_M301", "maxOutputTokens": 65536, "supportsThinking": True, "thinkingBudget": -1},
-        "gemini-3.6-flash-high": {"model": "MODEL_PLACEHOLDER_M71", "maxOutputTokens": 65536, "supportsThinking": True, "thinkingBudget": -1},
-        "gemini-3.6-flash-medium": {"model": "MODEL_PLACEHOLDER_M72", "maxOutputTokens": 65536, "supportsThinking": True, "thinkingBudget": 4000},
-        "gemini-3.6-flash-low": {"model": "MODEL_PLACEHOLDER_M73", "maxOutputTokens": 65536, "supportsThinking": True, "thinkingBudget": 1000},
-        "gemini-3.1-pro-low": {"model": "MODEL_PLACEHOLDER_M36", "maxOutputTokens": 65535, "supportsThinking": True, "thinkingBudget": 1001},
-        "gemini-pro-agent": {"model": "MODEL_PLACEHOLDER_M16", "maxOutputTokens": 65535, "supportsThinking": True, "thinkingBudget": 10001},
-        "gemini-3-flash": {"model": "MODEL_PLACEHOLDER_M18", "maxOutputTokens": 65536, "supportsThinking": True, "thinkingBudget": -1},
-        "gemini-3.5-flash-lite": {"model": "MODEL_PLACEHOLDER_M198", "maxOutputTokens": 65535, "supportsThinking": True, "thinkingBudget": -1},
-        "claude-sonnet-4-6": {"maxOutputTokens": 64000, "supportsThinking": True, "thinkingBudget": 1024},
-        "claude-opus-4-6-thinking": {"maxOutputTokens": 64000, "supportsThinking": True, "thinkingBudget": 1024},
-        "gpt-oss-120b-medium": {"model": "MODEL_OPENAI_GPT_OSS_120B_MEDIUM", "maxOutputTokens": 32768, "supportsThinking": True, "thinkingBudget": 8192, "usedNonGeminiModel": True},
+        "gemini-3.8-flash-tiered": {
+            "model": "MODEL_PLACEHOLDER_M322",
+            "maxOutputTokens": 65536,
+            "supportsThinking": True,
+            "thinkingBudget": -1,
+        },
+        "gemini-3.7-flash-tiered": {
+            "model": "MODEL_PLACEHOLDER_M301",
+            "maxOutputTokens": 65536,
+            "supportsThinking": True,
+            "thinkingBudget": -1,
+        },
+        "gemini-3.6-flash-high": {
+            "model": "MODEL_PLACEHOLDER_M71",
+            "maxOutputTokens": 65536,
+            "supportsThinking": True,
+            "thinkingBudget": -1,
+        },
+        "gemini-3.6-flash-medium": {
+            "model": "MODEL_PLACEHOLDER_M72",
+            "maxOutputTokens": 65536,
+            "supportsThinking": True,
+            "thinkingBudget": 4000,
+        },
+        "gemini-3.6-flash-low": {
+            "model": "MODEL_PLACEHOLDER_M73",
+            "maxOutputTokens": 65536,
+            "supportsThinking": True,
+            "thinkingBudget": 1000,
+        },
+        "gemini-3.1-pro-low": {
+            "model": "MODEL_PLACEHOLDER_M36",
+            "maxOutputTokens": 65535,
+            "supportsThinking": True,
+            "thinkingBudget": 1001,
+        },
+        "gemini-pro-agent": {
+            "model": "MODEL_PLACEHOLDER_M16",
+            "maxOutputTokens": 65535,
+            "supportsThinking": True,
+            "thinkingBudget": 10001,
+        },
+        "gemini-3-flash": {
+            "model": "MODEL_PLACEHOLDER_M18",
+            "maxOutputTokens": 65536,
+            "supportsThinking": True,
+            "thinkingBudget": -1,
+        },
+        "gemini-3.5-flash-lite": {
+            "model": "MODEL_PLACEHOLDER_M198",
+            "maxOutputTokens": 65535,
+            "supportsThinking": True,
+            "thinkingBudget": -1,
+        },
+        "claude-sonnet-4-6": {
+            "maxOutputTokens": 64000,
+            "supportsThinking": True,
+            "thinkingBudget": 1024,
+        },
+        "claude-opus-4-6-thinking": {
+            "maxOutputTokens": 64000,
+            "supportsThinking": True,
+            "thinkingBudget": 1024,
+        },
+        "gpt-oss-120b-medium": {
+            "model": "MODEL_OPENAI_GPT_OSS_120B_MEDIUM",
+            "maxOutputTokens": 32768,
+            "supportsThinking": True,
+            "thinkingBudget": 8192,
+            "usedNonGeminiModel": True,
+        },
     },
     "defaultAgentModelId": "gemini-3.1-pro-low",
     "commitMessageModelIds": ["gemini-3.5-flash-lite"],
@@ -352,7 +428,12 @@ class CatalogManager:
     def _save(self, project_key: str, checked_at: float, payload: dict[str, Any]) -> None:
         write_private_json(
             self.path,
-            {"version": CACHE_FORMAT_VERSION, "project": project_key, "checked_at": checked_at, "payload": payload},
+            {
+                "version": CACHE_FORMAT_VERSION,
+                "project": project_key,
+                "checked_at": checked_at,
+                "payload": payload,
+            },
         )
 
     def _cached(self, project_key: str) -> _Entry | None:

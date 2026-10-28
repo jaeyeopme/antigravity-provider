@@ -11,10 +11,16 @@ from pathlib import Path
 from typing import Any
 
 from . import __version__, oauth
-from .hermes_provider import PLACEHOLDER_API_KEY, PLACEHOLDER_API_KEY_ENV, PROVIDER_BASE_URL, PROVIDER_NAME, register_provider_profile
-from .credentials import SOURCE_KEYCHAIN
 from .catalog import fallback_catalog
+from .credentials import SOURCE_KEYCHAIN
 from .errors import AntigravityError
+from .hermes_provider import (
+    PLACEHOLDER_API_KEY,
+    PLACEHOLDER_API_KEY_ENV,
+    PROVIDER_BASE_URL,
+    PROVIDER_NAME,
+    register_provider_profile,
+)
 from .models import normalize_model_id, strip_provider_prefix
 from .paths import hermes_home
 from .service import default_service
@@ -83,16 +89,28 @@ def _save_placeholder_api_key() -> None:
 def _setup_cli(parser: argparse.ArgumentParser) -> None:
     sub = parser.add_subparsers(dest="antigravity_command")
 
-    login = sub.add_parser("login", help="use agy Keychain credentials, falling back to browser OAuth")
-    login.add_argument("--no-keychain", action="store_true", help="skip agy Keychain and run browser OAuth")
-    login.add_argument("--no-browser", action="store_true", help="print the auth URL instead of opening a browser")
-    login.add_argument("--timeout", type=int, default=300, help="seconds to wait for the OAuth callback")
+    login = sub.add_parser(
+        "login", help="use agy Keychain credentials, falling back to browser OAuth"
+    )
+    login.add_argument(
+        "--no-keychain", action="store_true", help="skip agy Keychain and run browser OAuth"
+    )
+    login.add_argument(
+        "--no-browser", action="store_true", help="print the auth URL instead of opening a browser"
+    )
+    login.add_argument(
+        "--timeout", type=int, default=300, help="seconds to wait for the OAuth callback"
+    )
 
-    select = sub.add_parser("select", help="set Antigravity as the active Hermes model without opening the model picker")
+    select = sub.add_parser(
+        "select", help="set Antigravity as the active Hermes model without opening the model picker"
+    )
     select.add_argument("model", nargs="?")
 
     sub.add_parser("status", help="show credential status")
-    sub.add_parser("logout", help="remove saved browser OAuth credentials and the provider registration")
+    sub.add_parser(
+        "logout", help="remove saved browser OAuth credentials and the provider registration"
+    )
 
 
 def _select_model(model_id: str | None) -> None:
@@ -108,7 +126,9 @@ def _select_model(model_id: str | None) -> None:
     listed = catalog.model_ids() if catalog is not fallback_catalog() else None
     if not model_id:
         if listed is None:
-            raise SystemExit("Could not load your Antigravity models. Run `hermes agy login`, or pass a model ID.")
+            raise SystemExit(
+                "Could not load your Antigravity models. Run `hermes agy login`, or pass a model ID."
+            )
         model_id = catalog.default_model
     elif listed is not None and normalize_model_id(model_id) not in listed:
         names = ", ".join(strip_provider_prefix(model) for model in listed)
@@ -117,7 +137,12 @@ def _select_model(model_id: str | None) -> None:
     model_cfg = config.get("model")
     if not isinstance(model_cfg, dict):
         model_cfg = {"default": model_cfg} if model_cfg else {}
-    model_cfg.update(provider=PROVIDER_NAME, default=model_id, base_url=PROVIDER_BASE_URL, api_mode="chat_completions")
+    model_cfg.update(
+        provider=PROVIDER_NAME,
+        default=model_id,
+        base_url=PROVIDER_BASE_URL,
+        api_mode="chat_completions",
+    )
     config["model"] = model_cfg
     save_config(config)
     print(f"Default Hermes model set to {model_id} via provider '{PROVIDER_NAME}'.")
@@ -131,7 +156,9 @@ def _status() -> None:
     print(f"refresh token: {'yes' if status['has_refresh_token'] else 'no'}")
     if status["expires_at"]:
         state = "expired" if status["expires_at"] <= time.time() else "valid"
-        print(f"access token expiry: {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(status['expires_at']))} ({state})")
+        print(
+            f"access token expiry: {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(status['expires_at']))} ({state})"
+        )
     if status["project_id"]:
         print(f"project: {status['project_id']}")
     if status["email"]:
@@ -164,9 +191,15 @@ def _run_cli(args: argparse.Namespace) -> None:
     if command == "login":
         ensure_provider_profile_files()
         _save_placeholder_api_key()
-        result = credentials.login(use_keychain=not args.no_keychain, open_browser=not args.no_browser, timeout=args.timeout)
+        result = credentials.login(
+            use_keychain=not args.no_keychain,
+            open_browser=not args.no_browser,
+            timeout=args.timeout,
+        )
         source = "agy Keychain" if result.source == SOURCE_KEYCHAIN else "browser OAuth"
-        print(f"Antigravity login complete ({source}{', ' + result.email if result.email else ''}).")
+        print(
+            f"Antigravity login complete ({source}{', ' + result.email if result.email else ''})."
+        )
     elif command == "select":
         ensure_provider_profile_files()
         _save_placeholder_api_key()

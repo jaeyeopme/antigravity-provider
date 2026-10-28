@@ -6,7 +6,19 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+      - run: pip install ruff && ruff check . && ruff format --check .
+
   test:
     runs-on: ${{ matrix.os }}
     strategy:
@@ -19,16 +31,22 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-      - run: pip install -e . && python -m unittest discover -v
+      - run: pip install -e . coverage && python -m coverage run -m unittest discover -v && python -m coverage report -m
 
   # Installs a fresh Hermes on a throwaway runner, so the real plugin install and agent turn are
-  # checked without touching anyone's own Hermes.
+  # checked without touching anyone's own Hermes. `stable` is the latest Hermes release; the pinned
+  # tag is the oldest release the plugin supports, so a Hermes change and a plugin change are told
+  # apart.
   hermes:
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
+        hermes: [stable]
+        include:
+          - os: ubuntu-latest
+            hermes: v0.21.6
     defaults:
       run:
         shell: bash
@@ -39,7 +57,8 @@ jobs:
           python-version: '3.14'
       - if: runner.os != 'Windows'
         run: |
-          curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash -s -- --non-interactive --skip-browser --skip-computer-use
+          curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash -s -- --non-interactive --skip-browser --skip-computer-use \
+            ${{ matrix.hermes != 'stable' && format('--channel main --branch {0}', matrix.hermes) || '' }}
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
       # The runner's C: drive is far slower than D: (actions/runner-images#8755), so Hermes and the
       # temp files go on D:.
@@ -58,3 +77,27 @@ jobs:
           scripts/validate_hermes.sh | tee validate.log
           grep -q 'directory plugin install and CLI registration ok' validate.log
       - run: python scripts/run_in_hermes.py scripts/e2e_hermes.py
+
+  # The one check branch protection on main requires.
+  ci:
+    needs: [lint, test, hermes]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - run: test "${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}" = false
+
+  # Every code merge sets a new version; tag it so users can name a version to pin or roll back to
+  # (`hermes plugins install ... --ref <commit>` takes the commit the tag points to). A merge that
+  # keeps the version (docs, CI) finds its tag already there and does nothing.
+  tag:
+    if: github.event_name == 'push'
+    needs: ci
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          v="v$(python -c "import re, pathlib; print(re.search(r'\"(.+)\"', pathlib.Path('src/antigravity_provider/__init__.py').read_text()).group(1))")"
+          if git ls-remote --exit-code --tags origin "$v" >/dev/null; then echo "$v already tagged"; exit 0; fi
+          git tag "$v" && git push origin "$v"

@@ -1,0 +1,56 @@
+name: Model missing or failing
+description: A model your account offers is not in the picker, or a model returns 404 or an unexpected error.
+labels: [model]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        New models usually need no plugin change. Before filing, check these:
+
+        - The catalog refreshes every four hours. Until then, use the model directly: `/model <model-id>` or `hermes agy select <model-id>`. If that works, the model will appear on its own.
+        - A `404` means Antigravity does not serve that model to your account, or the ID is wrong. `hermes model` lists what your account has.
+        - A new *kind* of model ID (a suffix the plugin does not know, a new wire protocol) does need code. That is what this template is for.
+  - type: input
+    id: model
+    attributes:
+      label: Model ID
+      description: Exactly as Antigravity or the IDE shows it, and as you typed it.
+    validations:
+      required: true
+  - type: dropdown
+    id: symptom
+    attributes:
+      label: What happens
+      options:
+        - Not in the picker, and /model <id> also fails
+        - Not in the picker, but /model <id> works
+        - Listed, but every request fails
+        - Listed and works, but reasoning levels or the output limit are wrong
+        - Something else
+    validations:
+      required: true
+  - type: textarea
+    id: error
+    attributes:
+      label: Exact error
+      render: text
+  - type: textarea
+    id: listing
+    attributes:
+      label: hermes model listing
+      description: The Antigravity entries `hermes model` shows, so the IDs your account offers are known.
+      render: text
+  - type: input
+    id: plugin
+    attributes:
+      label: Plugin version
+      placeholder: 2026.10.28.1
+    validations:
+      required: true
+  - type: input
+    id: hermes
+    attributes:
+      label: Hermes version
+      description: Output of `hermes --version`.
+    validations:
+      required: true

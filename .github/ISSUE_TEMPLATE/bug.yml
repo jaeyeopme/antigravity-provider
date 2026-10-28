@@ -1,0 +1,70 @@
+name: Bug report
+description: A request fails, sign-in misbehaves, or the plugin does something wrong.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Check the [Troubleshooting table](https://github.com/jaeyeopme/antigravity-provider#troubleshooting) first; most sign-in and port problems are there.
+
+        **Never paste a token, the contents of `.antigravity_oauth.json`, or the `agy` Keychain secret.** Blank your account email if you prefer. A token that reaches a public issue has to be treated as leaked.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: error
+    attributes:
+      label: Exact error
+      description: The line Hermes printed, copied as is. For a request failure, the provider error text.
+      render: text
+  - type: input
+    id: plugin
+    attributes:
+      label: Plugin version
+      description: The `version` in `plugin.yaml` of the installed plugin, or the `vYYYY.M.D` you pinned.
+      placeholder: 2026.10.28.1
+    validations:
+      required: true
+  - type: input
+    id: hermes
+    attributes:
+      label: Hermes version
+      description: Output of `hermes --version`.
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options: [macOS, Linux, Windows, Other]
+    validations:
+      required: true
+  - type: dropdown
+    id: signin
+    attributes:
+      label: Sign-in method
+      description: Shown by `hermes agy status`.
+      options: [agy Keychain credential (macOS), Browser sign-in, Not sure]
+    validations:
+      required: true
+  - type: input
+    id: model
+    attributes:
+      label: Model
+      description: The model ID in use when it failed, if a request failed.
+      placeholder: gemini-3-flash
+  - type: textarea
+    id: status
+    attributes:
+      label: hermes agy status
+      description: Paste the output, with the account email blanked if you prefer. It prints no token.
+      render: text
+  - type: textarea
+    id: context
+    attributes:
+      label: Anything else
+      description: Tool calls or images in the request, an MCP server loaded, several Hermes processes or profiles, a remote machine, a recent Hermes or plugin update.

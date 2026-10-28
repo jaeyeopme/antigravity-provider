@@ -43,7 +43,9 @@ class HermesPluginTests(unittest.TestCase):
         self.assertEqual(out, {"request": request})
 
     def test_request_middleware_injects_real_session_id(self):
-        out = plugin.antigravity_llm_request(provider="antigravity", request={"model": "m"}, session_id="hermes-session")
+        out = plugin.antigravity_llm_request(
+            provider="antigravity", request={"model": "m"}, session_id="hermes-session"
+        )
         self.assertEqual(out["request"]["_antigravity_session_id"], "hermes-session")
 
     def test_ensure_provider_profile_files(self):
@@ -51,8 +53,12 @@ class HermesPluginTests(unittest.TestCase):
             path = plugin.ensure_provider_profile_files(Path(td))
             init = (path / "__init__.py").read_text()
             # Existing installs import exactly this; it must stay stable across releases.
-            self.assertIn("from antigravity_provider.hermes_provider import register_provider_profile", init)
-            self.assertIn(f"version: {antigravity_provider.__version__}", (path / "plugin.yaml").read_text())
+            self.assertIn(
+                "from antigravity_provider.hermes_provider import register_provider_profile", init
+            )
+            self.assertIn(
+                f"version: {antigravity_provider.__version__}", (path / "plugin.yaml").read_text()
+            )
             plugin.remove_provider_profile_files(Path(td))
             self.assertFalse(path.exists())
             plugin.remove_provider_profile_files(Path(td))  # already gone: not an error
@@ -61,14 +67,21 @@ class HermesPluginTests(unittest.TestCase):
 class VersionTests(unittest.TestCase):
     def test_plugin_manifest_matches_package_version(self):
         manifest = (ROOT / "plugin.yaml").read_text()
-        self.assertEqual(re.search(r"^version: (.+)$", manifest, re.M).group(1), antigravity_provider.__version__)
+        self.assertEqual(
+            re.search(r"^version: (.+)$", manifest, re.M).group(1), antigravity_provider.__version__
+        )
 
     def test_changelog_has_entry_for_current_version(self):
         self.assertIn(f"## {antigravity_provider.__version__}", (ROOT / "CHANGELOG.md").read_text())
 
 
 class SelectModelTests(unittest.TestCase):
-    ACCOUNT = build_catalog({"models": {"gemini-3-flash": {}, "claude-sonnet-4-6": {}}, "defaultAgentModelId": "claude-sonnet-4-6"})
+    ACCOUNT = build_catalog(
+        {
+            "models": {"gemini-3-flash": {}, "claude-sonnet-4-6": {}},
+            "defaultAgentModelId": "claude-sonnet-4-6",
+        }
+    )
 
     def select(self, model, catalog):
         saved = []
@@ -76,8 +89,14 @@ class SelectModelTests(unittest.TestCase):
         config.load_config = lambda: {}
         config.save_config = saved.append
         service = SimpleNamespace(catalog=lambda: catalog)
-        with patch.dict(sys.modules, {"hermes_cli": types.ModuleType("hermes_cli"), "hermes_cli.config": config}), \
-                patch.object(plugin, "default_service", return_value=service), patch("builtins.print"):
+        with (
+            patch.dict(
+                sys.modules,
+                {"hermes_cli": types.ModuleType("hermes_cli"), "hermes_cli.config": config},
+            ),
+            patch.object(plugin, "default_service", return_value=service),
+            patch("builtins.print"),
+        ):
             plugin._select_model(model)
         return saved[0]["model"]["default"]
 
@@ -85,7 +104,9 @@ class SelectModelTests(unittest.TestCase):
         self.assertEqual(self.select("gemini-3-flash", self.ACCOUNT), "gemini-3-flash")
 
     def test_model_the_account_lacks_is_refused(self):
-        with self.assertRaisesRegex(SystemExit, "gemini-3-flash"):  # the message lists what is available
+        with self.assertRaisesRegex(
+            SystemExit, "gemini-3-flash"
+        ):  # the message lists what is available
             self.select("gemini-3.1-pro", self.ACCOUNT)
 
     def test_no_model_uses_the_account_default(self):
@@ -99,13 +120,26 @@ class SelectModelTests(unittest.TestCase):
 
 class StatusTests(unittest.TestCase):
     def test_status_shows_source_expiry_project_and_account(self):
-        described = {"source": "browser OAuth", "has_access_token": True, "has_refresh_token": True,
-                     "expires_at": time.time() - 60, "project_id": "proj-1", "email": "me@example.com"}
+        described = {
+            "source": "browser OAuth",
+            "has_access_token": True,
+            "has_refresh_token": True,
+            "expires_at": time.time() - 60,
+            "project_id": "proj-1",
+            "email": "me@example.com",
+        }
         service = SimpleNamespace(credentials=SimpleNamespace(describe=lambda: described))
-        with patch.object(plugin, "default_service", return_value=service), \
-                patch("sys.stdout", new_callable=io.StringIO) as out:
+        with (
+            patch.object(plugin, "default_service", return_value=service),
+            patch("sys.stdout", new_callable=io.StringIO) as out,
+        ):
             self.assertIsNone(plugin._handle_cli(SimpleNamespace(antigravity_command="status")))
-        for line in ("credentials: browser OAuth", "(expired)", "project: proj-1", "account: me@example.com"):
+        for line in (
+            "credentials: browser OAuth",
+            "(expired)",
+            "project: proj-1",
+            "account: me@example.com",
+        ):
             self.assertIn(line, out.getvalue())
 
 
@@ -113,8 +147,10 @@ class CliErrorTests(unittest.TestCase):
     def run_cli(self, error):
         args = SimpleNamespace(antigravity_command="logout")
         service = SimpleNamespace(credentials=SimpleNamespace(logout=Mock(side_effect=error)))
-        with patch.object(plugin, "default_service", return_value=service), \
-                patch("sys.stderr", new_callable=io.StringIO) as err:
+        with (
+            patch.object(plugin, "default_service", return_value=service),
+            patch("sys.stderr", new_callable=io.StringIO) as err,
+        ):
             code = plugin._handle_cli(args)
         return code, err.getvalue()
 

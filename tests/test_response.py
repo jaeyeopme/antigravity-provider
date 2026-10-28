@@ -1,7 +1,11 @@
 import unittest
 
 from antigravity_provider.errors import AntigravityError
-from antigravity_provider.response import collect_response, to_openai_completion, to_openai_stream_chunks
+from antigravity_provider.response import (
+    collect_response,
+    to_openai_completion,
+    to_openai_stream_chunks,
+)
 
 NOTICE = "Gemini 3.5 Flash is no longer available. Please switch to Gemini 3.7 Flash in the latest version of Antigravity."
 
@@ -12,29 +16,43 @@ def candidate(parts, finish="STOP"):
 
 class CompletionTests(unittest.TestCase):
     def test_text_candidate_to_completion(self):
-        completion = to_openai_completion("google-antigravity/gemini-3.1-pro", candidate([{"text": "pong"}]))
+        completion = to_openai_completion(
+            "google-antigravity/gemini-3.1-pro", candidate([{"text": "pong"}])
+        )
         self.assertEqual(completion["object"], "chat.completion")
         self.assertEqual(completion["choices"][0]["message"]["content"], "pong")
         self.assertEqual(completion["choices"][0]["finish_reason"], "stop")
 
     def test_function_call_part_to_openai_tool_call(self):
-        out = to_openai_completion("gemini-3.1-pro", candidate([{"functionCall": {"name": "get_time", "args": {}}}]))
-        self.assertEqual(out["choices"][0]["message"]["tool_calls"][0]["function"]["name"], "get_time")
+        out = to_openai_completion(
+            "gemini-3.1-pro", candidate([{"functionCall": {"name": "get_time", "args": {}}}])
+        )
+        self.assertEqual(
+            out["choices"][0]["message"]["tool_calls"][0]["function"]["name"], "get_time"
+        )
         self.assertEqual(out["choices"][0]["finish_reason"], "tool_calls")
 
     def test_identical_tool_calls_in_later_turns_receive_distinct_ids(self):
         upstream = candidate([{"functionCall": {"name": "read_file", "args": {"path": "a.txt"}}}])
-        first = to_openai_completion("gemini-3.1-pro", upstream)["choices"][0]["message"]["tool_calls"][0]["id"]
-        second = to_openai_completion("gemini-3.1-pro", upstream)["choices"][0]["message"]["tool_calls"][0]["id"]
+        first = to_openai_completion("gemini-3.1-pro", upstream)["choices"][0]["message"][
+            "tool_calls"
+        ][0]["id"]
+        second = to_openai_completion("gemini-3.1-pro", upstream)["choices"][0]["message"][
+            "tool_calls"
+        ][0]["id"]
         self.assertNotEqual(first, second)
 
     def test_upstream_tool_call_id_is_kept(self):
-        out = to_openai_completion("gemini-3.1-pro", candidate([{"functionCall": {"id": "up-1", "name": "f", "args": {}}}]))
+        out = to_openai_completion(
+            "gemini-3.1-pro", candidate([{"functionCall": {"id": "up-1", "name": "f", "args": {}}}])
+        )
         self.assertEqual(out["choices"][0]["message"]["tool_calls"][0]["id"], "up-1")
 
     def test_thought_signature_is_exposed_for_hermes_replay(self):
         part = {"functionCall": {"name": "f", "args": {}}, "thoughtSignature": "SIG"}
-        call = to_openai_completion("gemini-3.1-pro", candidate([part]))["choices"][0]["message"]["tool_calls"][0]
+        call = to_openai_completion("gemini-3.1-pro", candidate([part]))["choices"][0]["message"][
+            "tool_calls"
+        ][0]
         self.assertEqual(call["extra_content"], {"google": {"thought_signature": "SIG"}})
 
     def test_malformed_function_call_without_output_is_a_retryable_error(self):
@@ -45,8 +63,15 @@ class CompletionTests(unittest.TestCase):
 
     def test_max_tokens_finish_maps_to_length(self):
         cut = candidate([{"text": "cut"}], "MAX_TOKENS")
-        self.assertEqual(to_openai_completion("gemini-3.1-pro", cut)["choices"][0]["finish_reason"], "length")
-        self.assertEqual(list(to_openai_stream_chunks("gemini-3.1-pro", [cut]))[-1]["choices"][0]["finish_reason"], "length")
+        self.assertEqual(
+            to_openai_completion("gemini-3.1-pro", cut)["choices"][0]["finish_reason"], "length"
+        )
+        self.assertEqual(
+            list(to_openai_stream_chunks("gemini-3.1-pro", [cut]))[-1]["choices"][0][
+                "finish_reason"
+            ],
+            "length",
+        )
 
     def test_safety_finish_maps_to_content_filter(self):
         out = to_openai_completion("gemini-3.1-pro", candidate([{"text": "partial"}], "SAFETY"))
@@ -59,8 +84,19 @@ class StreamTests(unittest.TestCase):
             {"candidates": [{"content": {"parts": [{"text": "think", "thought": True}]}}]},
             {"candidates": [{"content": {"parts": [{"text": "answer"}]}}]},
             {
-                **candidate([{"functionCall": {"name": "lookup", "args": {"q": "x"}}, "thoughtSignature": "SIG"}]),
-                "usageMetadata": {"promptTokenCount": 2, "candidatesTokenCount": 3, "totalTokenCount": 5},
+                **candidate(
+                    [
+                        {
+                            "functionCall": {"name": "lookup", "args": {"q": "x"}},
+                            "thoughtSignature": "SIG",
+                        }
+                    ]
+                ),
+                "usageMetadata": {
+                    "promptTokenCount": 2,
+                    "candidatesTokenCount": 3,
+                    "totalTokenCount": 5,
+                },
             },
         ]
         chunks = list(to_openai_stream_chunks("gemini-3.1-pro", events))
@@ -98,12 +134,17 @@ class StreamTests(unittest.TestCase):
 
     def test_backend_notice_without_response_id_is_a_complete_reply(self):
         # A retired model answers with only this text: no responseId, no usage, no finishReason.
-        chunks = list(to_openai_stream_chunks("gemini-3.5-flash", [candidate([{"text": NOTICE}], None)]))
+        chunks = list(
+            to_openai_stream_chunks("gemini-3.5-flash", [candidate([{"text": NOTICE}], None)])
+        )
         self.assertEqual(chunks[0]["choices"][0]["delta"]["content"], NOTICE)
         self.assertEqual(chunks[-1]["choices"][0]["finish_reason"], "stop")
 
     def test_usage_sent_after_finish_event_reaches_the_final_chunk(self):
-        events = [candidate([{"text": "hi"}]), {"usageMetadata": {"promptTokenCount": 5, "candidatesTokenCount": 2}}]
+        events = [
+            candidate([{"text": "hi"}]),
+            {"usageMetadata": {"promptTokenCount": 5, "candidatesTokenCount": 2}},
+        ]
         chunks = list(to_openai_stream_chunks("gemini-3.1-pro", events))
         self.assertEqual(chunks[-1]["choices"][0]["finish_reason"], "stop")
         self.assertEqual(chunks[-1]["usage"]["total_tokens"], 7)
@@ -116,10 +157,15 @@ class CollectTests(unittest.TestCase):
         self.assertTrue(out["candidates"][0]["content"]["parts"][0]["thought"])
 
     def test_chunks_are_concatenated_with_last_finish_and_usage(self):
-        out = collect_response([
-            {"candidates": [{"content": {"parts": [{"text": "a"}]}}], "responseId": "r1"},
-            {**candidate([{"text": "b"}], "MAX_TOKENS"), "usageMetadata": {"totalTokenCount": 3}},
-        ])
+        out = collect_response(
+            [
+                {"candidates": [{"content": {"parts": [{"text": "a"}]}}], "responseId": "r1"},
+                {
+                    **candidate([{"text": "b"}], "MAX_TOKENS"),
+                    "usageMetadata": {"totalTokenCount": 3},
+                },
+            ]
+        )
         self.assertEqual([p["text"] for p in out["candidates"][0]["content"]["parts"]], ["a", "b"])
         self.assertEqual(out["candidates"][0]["finishReason"], "MAX_TOKENS")
         self.assertEqual(out["usageMetadata"]["totalTokenCount"], 3)
