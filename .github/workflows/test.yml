@@ -67,7 +67,7 @@ jobs:
       # $HERMES_HOME/tools and reuses an entry that verifies, so the next run skips the downloads
       # that stall. Each run saves a fresh entry and the newest one is restored; GitHub evicts
       # the old ones.
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: ${{ runner.os == 'Windows' && 'D:\hermes\tools' || '~/.hermes/tools' }}
           key: hermes-tools-${{ runner.os }}-${{ matrix.hermes }}-${{ github.run_id }}
