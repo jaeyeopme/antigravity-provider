@@ -7,10 +7,11 @@ change that is right on your machine is also right on theirs.
 ## Before you start
 
 - Bugs, missing models, and ideas go through the
-  [issue templates](https://github.com/jaeyeopme/antigravity-provider/issues/new/choose).
+  [issue templates](https://github.com/jaeyeopme/hermes-plugin-antigravity-subscription/issues/new/choose).
   A problem in Hermes itself (installing it, other providers, the TUI) belongs in
   [hermes-agent](https://github.com/NousResearch/hermes-agent/issues).
-- Anything that could expose a sign-in token goes through [SECURITY.md](SECURITY.md), not an issue.
+- Anything that could expose a sign-in token goes through GitHub's private vulnerability reporting
+  (**Security → Report a vulnerability**), not an issue.
 - For more than a small fix, open an issue first so the approach is agreed before the code exists.
 
 ## Setup
@@ -45,7 +46,7 @@ The plugin uses only the standard library. Do not add a dependency.
   description) needs no version bump or changelog entry.
 - CI tags each new version on `main` as `vYYYY.M.D[.n]`. There are no GitHub releases: Hermes
   installs from `main`. A user who wants to pin or roll back runs
-  `hermes plugins install jaeyeopme/antigravity-provider --ref <commit>` with the commit a tag
+  `hermes plugins install jaeyeopme/hermes-plugin-antigravity-subscription --ref <commit>` with the commit a tag
   points to.
 
 ## What a pull request needs
