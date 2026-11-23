@@ -2,6 +2,10 @@
 
 Each version is the date its code reached `main` (`YYYY.M.D`), with `.1`, `.2`, ... for later merges the same day.
 
+## 2026.11.24
+
+- The plugin is now named `antigravity-subscription`, and the repository `jaeyeopme/hermes-plugin-antigravity-subscription`. The old repository address still works, and an existing install keeps working under its old name `antigravity-provider` after `hermes plugins update`.
+
 ## 2026.10.28.1
 
 - Keep "null allowed" on tool parameters as `nullable`. A parameter typed `["string", "null"]` or with a `null` union branch lost that, so the model could never pass null to a tool that uses it to clear a field.

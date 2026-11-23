@@ -63,7 +63,7 @@ PY
   git -C "$repo" add .
   git -C "$repo" -c user.name=Hermes -c user.email=hermes@example.invalid commit -q -m init
   HERMES_HOME="$home" hermes plugins install "file:///${repo#/}" --force >/dev/null
-  HERMES_HOME="$home" hermes plugins enable antigravity-provider >/dev/null
+  HERMES_HOME="$home" hermes plugins enable antigravity-subscription >/dev/null
   HERMES_HOME="$home" hermes agy status >/dev/null
   if [ -n "$launch" ] && [ "$(hermes --print-runtime-command)" != "$launch" ]; then
     echo "hermes launcher changed during the check; it was: $launch" >&2

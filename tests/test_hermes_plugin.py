@@ -1,6 +1,7 @@
 import errno
 import io
 import re
+import subprocess
 import sys
 import tempfile
 import time
@@ -62,6 +63,21 @@ class HermesPluginTests(unittest.TestCase):
             plugin.remove_provider_profile_files(Path(td))
             self.assertFalse(path.exists())
             plugin.remove_provider_profile_files(Path(td))  # already gone: not an error
+
+    def test_provider_profile_shim_finds_new_and_old_install_dir(self):
+        for name in ("antigravity-subscription", "antigravity-provider"):
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as td:
+                shim = plugin.ensure_provider_profile_files(Path(td)) / "__init__.py"
+                pkg = Path(td) / "plugins" / name / "src" / "antigravity_provider"
+                pkg.mkdir(parents=True)
+                (pkg / "__init__.py").write_text("")
+                (pkg / "hermes_provider.py").write_text(
+                    "def register_provider_profile():\n    print(__file__)\n"
+                )
+                out = subprocess.run(
+                    [sys.executable, "-I", str(shim)], capture_output=True, text=True, check=True
+                ).stdout
+                self.assertIn(str(pkg / "hermes_provider.py"), out)
 
 
 class VersionTests(unittest.TestCase):

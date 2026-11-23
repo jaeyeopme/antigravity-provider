@@ -5,7 +5,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Check the [Troubleshooting table](https://github.com/jaeyeopme/antigravity-provider#troubleshooting) first; most sign-in and port problems are there.
+        Check the [Troubleshooting table](https://github.com/jaeyeopme/hermes-plugin-antigravity-subscription#troubleshooting) first; most sign-in and port problems are there.
 
         **Never paste a token, the contents of `.antigravity_oauth.json`, or the `agy` Keychain secret.** Blank your account email if you prefer. A token that reaches a public issue has to be treated as leaked.
   - type: textarea

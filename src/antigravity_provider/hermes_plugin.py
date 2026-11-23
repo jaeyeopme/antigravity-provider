@@ -58,9 +58,13 @@ def ensure_provider_profile_files(root: Path | None = None) -> Path:
     (plugin_dir / "__init__.py").write_text(
         "import sys\n"
         "from pathlib import Path\n\n"
-        "_src = Path(__file__).resolve().parents[2] / 'antigravity-provider' / 'src'\n"
-        "if _src.is_dir() and str(_src) not in sys.path:\n"
-        "    sys.path.insert(0, str(_src))\n\n"
+        "# antigravity-provider: the install folder name before the plugin was renamed\n"
+        "for _name in ('antigravity-subscription', 'antigravity-provider'):\n"
+        "    _src = Path(__file__).resolve().parents[2] / _name / 'src'\n"
+        "    if _src.is_dir():\n"
+        "        if str(_src) not in sys.path:\n"
+        "            sys.path.insert(0, str(_src))\n"
+        "        break\n\n"
         "from antigravity_provider.hermes_provider import register_provider_profile\n"
         "register_provider_profile()\n",
         encoding="utf-8",
