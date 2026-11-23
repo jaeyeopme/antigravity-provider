@@ -77,7 +77,10 @@ class HermesPluginTests(unittest.TestCase):
                 out = subprocess.run(
                     [sys.executable, "-I", str(shim)], capture_output=True, text=True, check=True
                 ).stdout
-                self.assertIn(str(pkg / "hermes_provider.py"), out)
+                # resolve(): Windows temp paths can come back in short 8.3 form
+                self.assertEqual(
+                    Path(out.strip()).resolve(), (pkg / "hermes_provider.py").resolve()
+                )
 
 
 class VersionTests(unittest.TestCase):
