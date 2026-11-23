@@ -1,14 +1,17 @@
 ---
-name: pr
-description: "Use when writing a PR body."
+description: Use when writing a PR body.
 metadata:
-  credits:
-    skill: show-me
-    author: Dex Horthy
-    organisation: Humanlayer
-    url: "https://github.com/humanlayer/skills/blob/main/plugins/show-me/skills/show-me/SKILL.md"
+    credits:
+        author: Dex Horthy
+        organisation: Humanlayer
+        skill: show-me
+        url: https://github.com/humanlayer/skills/blob/main/plugins/show-me/skills/show-me/SKILL.md
+    github-path: skills/engineering/pr
+    github-ref: refs/tags/v1.3.2
+    github-repo: https://github.com/mattpocock/skills
+    github-tree-sha: 00b896d811adffad747c7ca30078d909d60c7f93
+name: pr
 ---
-
 Use this template for writing the PR body:
 
 ```markdown
