@@ -71,6 +71,17 @@ class Fetch:
 
 
 class CatalogTests(unittest.TestCase):
+    def test_models_the_backend_marks_disabled_are_not_offered(self):
+        catalog = build_catalog(
+            {
+                "models": {
+                    "gemini-3-flash": {},
+                    "gemini-4-argon-disabled": {"disabled": True, "tagTitle": "Unavailable"},
+                }
+            }
+        )
+        self.assertEqual(catalog.model_ids(), ["google-antigravity/gemini-3-flash"])
+
     def test_unknown_thinking_family_is_grouped_without_static_entry(self):
         catalog = build_catalog(CATALOG_PAYLOAD)
         self.assertIn("google-antigravity/gemini-3.9-flash", catalog.model_ids())

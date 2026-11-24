@@ -3,8 +3,12 @@
 [![tests](https://github.com/jaeyeopme/hermes-plugin-antigravity-subscription/actions/workflows/test.yml/badge.svg)](https://github.com/jaeyeopme/hermes-plugin-antigravity-subscription/actions/workflows/test.yml)
 
 A [Hermes](https://github.com/NousResearch/hermes-agent) model provider plugin for the Gemini, Claude, and gpt-oss
-models of your Google Antigravity account. No API key and no local proxy: the plugin signs in with your Google
-account and talks to Antigravity directly from inside Hermes.
+models of your Google Antigravity account. No API key, no local proxy, and no `agy` process: the plugin signs in
+with your Google account and calls the models directly from inside Hermes, so Hermes' own system prompt and tools
+go straight to the model with no second agent in between.
+
+Plugins that run Google's `agy` CLI let a Google client make the requests. This one makes them itself, which is
+what the caution below is about.
 
 > [!CAUTION]
 > This is an unofficial integration, not endorsed by Google. It reaches
@@ -63,7 +67,7 @@ The `google-antigravity/` prefix is optional. A model the backend serves works e
 | `Antigravity sign-in expired or was revoked` | Run `hermes agy login`. With the `agy` credential, sign in to `agy` again first. |
 | A new model is missing from the picker | The catalog refreshes every four hours. Use `/model <model-id>` meanwhile. |
 | Port 51121 is busy | `ANTIGRAVITY_OAUTH_PORT=51122 hermes agy login --no-keychain` |
-| Requests fail after an Antigravity update | Set `ANTIGRAVITY_CLIENT_VERSION` to the current `agy` version. |
+| `This version of Antigravity is no longer supported` | Restart Hermes; the version is read again on its first request. If it still fails, set `ANTIGRAVITY_CLIENT_VERSION` to the current Antigravity version. |
 | Something broke after `hermes plugins update` | Every merge to `main` is a release. Go back with `hermes plugins install jaeyeopme/hermes-plugin-antigravity-subscription --force --ref <commit>`, using the commit of an earlier [tag](https://github.com/jaeyeopme/hermes-plugin-antigravity-subscription/tags). |
 
 ## Privacy
@@ -77,6 +81,13 @@ The `google-antigravity/` prefix is optional. A model the backend serves works e
 
 - **Credentials**: a browser sign-in in the active Hermes profile wins, then the `agy` Keychain credential.
   Expired tokens are refreshed; a 401 is refreshed and retried once. A missing Cloud Code project is found or created.
+- **Client version**: the backend hides newer models from old client versions and in time rejects them, so the
+  plugin presents itself as the current Antigravity IDE (`antigravity/hub/<version>`, the form the IDE sends).
+  `agy` sends `antigravity/cli/<version>` and gets the same models, but the backend refuses old `cli` versions
+  much sooner than old `hub` ones, and `hub` is what oh-my-pi uses for direct calls. The plugin reads the
+  IDE's version from Antigravity's update server once per Hermes process, on the first request, and saves it.
+  When that server cannot be reached it presents the saved version or the one built into the plugin, whichever
+  is newer. A weekly CI job warns the maintainer if that server stops answering or the built-in version grows old.
 - **Catalog**: both Antigravity endpoints are asked (`v1internal:fetchAvailableModels`), merged, and cached for
   four hours. Variants such as `*-low`, `*-high`, `*-thinking`, and `*-tiered` fold into one model whose reasoning
   level picks the variant or thinking budget.
@@ -84,9 +95,10 @@ The `google-antigravity/` prefix is optional. A model the backend serves works e
   (keeping Gemini thought signatures), `max_tokens`, `temperature`, `top_p`, and tool schemas widened to what the
   backend accepts. Failures surface as Hermes provider errors, so Hermes' retry and fallback apply.
 - **Files** in `$HERMES_HOME`: `.antigravity_oauth.json` (sign-in), `.antigravity_models.json` (catalog cache),
-  `plugins/model-providers/antigravity/` (a small shim that registers the provider; written by `login` and `select`).
+  `.antigravity_client_version.json` (last client version read), `plugins/model-providers/antigravity/` (a small
+  shim that registers the provider; written by `login` and `select`).
 - **Environment**: `ANTIGRAVITY_OAUTH_PORT`, `ANTIGRAVITY_OAUTH_BIND_HOST`, `ANTIGRAVITY_OAUTH_REDIRECT_HOST`
-  (sign-in listener), `ANTIGRAVITY_CLIENT_VERSION` (client version presented).
+  (sign-in listener), `ANTIGRAVITY_CLIENT_VERSION` (client version presented, instead of the one read).
 
 ## Uninstall
 

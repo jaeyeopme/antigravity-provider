@@ -22,6 +22,8 @@ SIGNATURE = "E2E_THOUGHT_SIGNATURE"
 SAFE_TOOLS = ("todo", "session_search", "skills_list")
 
 os.environ["HERMES_HOME"] = tempfile.mkdtemp(prefix="antigravity-e2e-")
+# The backend is faked; the client version must not come from Antigravity's update server either.
+os.environ["ANTIGRAVITY_CLIENT_VERSION"] = "0.0.0"
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 RETIRED = "Gemini 3.5 Flash is no longer available. Please switch to Gemini 3.7 Flash."

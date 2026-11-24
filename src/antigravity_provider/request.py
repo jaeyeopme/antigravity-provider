@@ -143,14 +143,8 @@ def _requires_thought_signature(wire_model: str) -> bool:
     return wire_model.startswith(("gemini-3", "gemini-pro"))
 
 
-def _accepts_thought_signature(wire_model: str) -> bool:
-    # Signatures are issued by Gemini; a conversation switched to Claude or gpt-oss must not
-    # replay them.
-    return wire_model.startswith("gemini")
-
-
 def _model_parts(
-    message: dict[str, Any], wire_model: str, call_names: dict[str, str]
+    message: dict[str, Any], route: ResolvedRoute, call_names: dict[str, str]
 ) -> list[dict[str, Any]]:
     parts = _parts_from_content(message.get("content"))
     calls: list[tuple[dict[str, Any], str | None]] = []
@@ -168,13 +162,15 @@ def _model_parts(
             part["functionCall"]["id"] = str(tool_call["id"])
         calls.append((part, thought_signature(tool_call)))
 
-    if not _accepts_thought_signature(wire_model):
+    # Signatures are issued by Gemini; a conversation switched to Claude or gpt-oss must not
+    # replay them.
+    if route.family != "gemini":
         calls = [(part, None) for part, _ in calls]
     has_real_signature = any(signature for _, signature in calls)
     for part, signature in calls:
         if signature:
             part["thoughtSignature"] = signature
-        elif not has_real_signature and _requires_thought_signature(wire_model):
+        elif not has_real_signature and _requires_thought_signature(route.wire_model):
             part["thoughtSignature"] = SKIP_THOUGHT_SIGNATURE
         parts.append(part)
     return parts
@@ -200,7 +196,7 @@ def _function_declarations(tools: list[dict[str, Any]]) -> list[dict[str, Any]] 
 
 
 def _tool_config(
-    tools: list[dict[str, Any]], tool_choice: Any, wire_model: str
+    tools: list[dict[str, Any]], tool_choice: Any, route: ResolvedRoute
 ) -> dict[str, Any] | None:
     if isinstance(tool_choice, str):
         choice = tool_choice.lower()
@@ -213,7 +209,7 @@ def _tool_config(
         name = fn.get("name") if isinstance(fn, dict) else None
         if name:
             return {"functionCallingConfig": {"mode": "ANY", "allowedFunctionNames": [name]}}
-    if tools or wire_model.startswith("claude-"):
+    if tools or route.family == "claude":
         return {"functionCallingConfig": {"mode": "VALIDATED"}}
     return None
 
@@ -235,7 +231,7 @@ def _session_id(messages: list[dict[str, Any]], session_id: str | None = None) -
 
 
 def _envelope_labels(route: ResolvedRoute, step: int = 2) -> dict[str, str]:
-    used_claude = route.wire_model.startswith("claude-")
+    used_claude = route.family == "claude"
     labels = {
         "last_step_index": str(step - 1),
         "trajectory_id": str(uuid.uuid4()),
@@ -249,7 +245,7 @@ def _envelope_labels(route: ResolvedRoute, step: int = 2) -> dict[str, str]:
 
 
 def _contents(
-    messages: list[dict[str, Any]], wire_model: str
+    messages: list[dict[str, Any]], route: ResolvedRoute
 ) -> tuple[list[dict[str, Any]], list[dict[str, str]]]:
     system_parts: list[dict[str, str]] = []
     contents: list[dict[str, Any]] = []
@@ -265,7 +261,7 @@ def _contents(
             if parts:
                 contents.append({"role": "user", "parts": parts})
         elif role == "assistant":
-            parts = _model_parts(message, wire_model, call_names)
+            parts = _model_parts(message, route, call_names)
             if parts:
                 contents.append({"role": "model", "parts": parts})
         elif role == "tool":
@@ -313,7 +309,7 @@ def build_generate_content_request(
     route = (catalog or fallback_catalog()).resolve(
         request.model, normalize_effort(request.reasoning_effort)
     )
-    contents, system_parts = _contents(request.messages, route.wire_model)
+    contents, system_parts = _contents(request.messages, route)
 
     max_tokens = request.max_tokens
     max_output = (
@@ -322,12 +318,7 @@ def build_generate_content_request(
         else route.max_output_tokens
     )
     budget = route.thinking_budget
-    if (
-        route.wire_model.startswith("claude-")
-        and budget is not None
-        and 0 < budget
-        and max_output <= budget
-    ):
+    if route.family == "claude" and budget is not None and 0 < budget and max_output <= budget:
         # Claude counts thinking toward max_tokens and rejects max_tokens <= the thinking budget.
         max_output = min(budget + max_output, route.max_output_tokens)
     generation_config: dict[str, Any] = {"maxOutputTokens": max_output}
@@ -352,7 +343,7 @@ def build_generate_content_request(
     declarations = _function_declarations(request.tools)
     if declarations:
         upstream["tools"] = declarations
-    tool_config = _tool_config(request.tools, request.tool_choice, route.wire_model)
+    tool_config = _tool_config(request.tools, request.tool_choice, route)
     if tool_config:
         upstream["toolConfig"] = tool_config
 
