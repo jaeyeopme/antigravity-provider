@@ -1,0 +1,23 @@
+name: client version
+
+# Every Hermes process reads the Antigravity version itself; this only warns the maintainer, by
+# failing, when the update server it reads cannot be reached or the fallback version has grown old.
+# See scripts/check_client_version.py. It changes nothing and opens nothing.
+on:
+  schedule:
+    - cron: '17 3 * * 1'  # Mondays 03:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.14'
+      - run: PYTHONPATH=src python scripts/check_client_version.py
