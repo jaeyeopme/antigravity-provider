@@ -77,5 +77,5 @@ In `src/antigravity_provider/`, from Hermes inward:
 | `response.py` | Cloud Code chunks to OpenAI completions and stream chunks. |
 | `client.py` | HTTP and SSE transport with endpoint fallback. |
 | `catalog.py` | Model discovery, routing, and the last-known-good cache. |
-| `auth.py`, `credentials.py`, `oauth.py`, `cloudcode.py` | Credential choice and refresh, storage and Keychain, Google OAuth, project onboarding. |
+| `auth.py`, `credentials.py`, `oauth.py`, `cloudcode.py` | Credential choice and refresh, storage and Keychain, Google OAuth, client version and project onboarding. |
 | `models.py`, `errors.py`, `net.py`, `fileio.py`, `paths.py` | Model ID and effort normalization, error type, HTTP helpers, private file writes, Hermes home paths. |

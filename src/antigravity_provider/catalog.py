@@ -51,6 +51,10 @@ class ResolvedRoute:
     include_thoughts: bool
     used_non_gemini_model: bool
 
+    @property
+    def family(self) -> str | None:
+        return _family(self.wire_model)
+
 
 @dataclass
 class _ModelGroup:
@@ -96,6 +100,14 @@ class ModelCatalog:
         return self.resolve(model, "low").max_output_tokens
 
 
+def _family(model_id: str) -> str | None:
+    """The model family a public or wire model ID names; the one place that reads the prefix."""
+    for family in ("gemini", "claude", "gpt-oss"):
+        if model_id.startswith(f"{family}-"):
+            return family
+    return None
+
+
 def _pick_variant(group: _ModelGroup, effort: str) -> RouteSpec:
     orders = {
         "off": ("low", "minimal", "medium", "high"),
@@ -127,13 +139,14 @@ def _thinking_budget(public_id: str, spec: RouteSpec, effort: str, *, tiered: bo
         return spec.thinking_budget
     if public_id == "gemini-3.1-pro":
         return 10001 if effort == "high" else 1001
-    if public_id.startswith("gemini-"):
+    family = _family(public_id)
+    if family == "gemini":
         return {"minimal": 1000, "low": 1000, "medium": 4000, "high": -1}[effort]
     if spec.thinking_budget is not None:
         return spec.thinking_budget
-    if public_id.startswith("claude-"):
+    if family == "claude":
         return 1024
-    if public_id.startswith("gpt-oss-"):
+    if family == "gpt-oss":
         return 8192
     return None
 
@@ -163,7 +176,7 @@ def _route_spec(runtime_id: str, info: dict[str, Any]) -> RouteSpec:
         else None,
         thinking_budget=budget if isinstance(budget, int) else None,
         used_non_gemini_model=bool(
-            info.get("usedNonGeminiModel") or runtime_id.startswith("gpt-oss-")
+            info.get("usedNonGeminiModel") or _family(runtime_id) == "gpt-oss"
         ),
     )
 
@@ -187,13 +200,14 @@ def _selectable(runtime_id: str, info: dict[str, Any], advertised: set[str]) -> 
     lower = runtime_id.lower()
     if (
         info.get("isInternal") is True
+        or info.get("disabled") is True  # listed as unavailable; a request for it returns 404
         or "image" in lower
         or lower.startswith(("chat_", "tab_", "model_"))
     ):
         return False
     if not runtime_id or any(char.isspace() for char in runtime_id):
         return False
-    return runtime_id in advertised or lower.startswith(("gemini-", "claude-", "gpt-oss-"))
+    return runtime_id in advertised or _family(lower) is not None
 
 
 def _suffix(runtime_id: str) -> tuple[str, str] | None:

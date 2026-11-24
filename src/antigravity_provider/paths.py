@@ -47,3 +47,7 @@ def oauth_credentials_path() -> Path:
 
 def model_cache_path() -> Path:
     return hermes_home() / ".antigravity_models.json"
+
+
+def client_version_path() -> Path:
+    return hermes_home() / ".antigravity_client_version.json"

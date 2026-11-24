@@ -26,16 +26,13 @@ def fresh(**overrides):
     return values
 
 
-def revoked(refresh_token):
-    raise AntigravityError("Antigravity sign-in expired", status=401)
-
-
 class Harness:
     def __init__(self, directory, keychain=None):
         self.store = CredentialStore(Path(directory) / "oauth.json")
         self.keychain = keychain
         self.keychain_loads = 0
         self.refreshes = []
+        self.revoked = False  # set to make Google reject the refresh token
         self.projects = []
         self.manager = CredentialManager(
             store_factory=lambda: self.store,
@@ -54,6 +51,8 @@ class Harness:
         )
 
     def refresh(self, refresh_token):
+        if self.revoked:
+            raise AntigravityError("Antigravity sign-in expired", status=401)
         self.refreshes.append(refresh_token)
         return {
             "access_token": f"new-{len(self.refreshes)}",
@@ -177,7 +176,7 @@ class RefreshAfterRejectionTests(unittest.TestCase):
         h = Harness(self.tmp.name, keychain=fresh(refresh_token="old"))
         rejected = h.manager.current()
         h.keychain = fresh(access_token="relogin", refresh_token="new")  # `agy` signed in again
-        h.manager._refresh_tokens = revoked
+        h.revoked = True
         self.assertEqual(h.manager.refresh(rejected).access_token, "relogin")
         self.assertEqual(h.manager.current().access_token, "relogin")
 
@@ -188,13 +187,13 @@ class RefreshAfterRejectionTests(unittest.TestCase):
             fresh(refresh_token="old", expires_at=1), source=SOURCE_KEYCHAIN
         )
         h.keychain = fresh(access_token="relogin", refresh_token="new")
-        h.manager._refresh_tokens = revoked
+        h.revoked = True
         self.assertEqual(h.manager.current().access_token, "relogin")
 
     def test_failed_keychain_refresh_without_a_new_sign_in_still_fails(self):
         h = Harness(self.tmp.name, keychain=fresh())
         rejected = h.manager.current()
-        h.manager._refresh_tokens = revoked
+        h.revoked = True
         with self.assertRaises(AntigravityError):
             h.manager.refresh(rejected)
 
@@ -241,7 +240,7 @@ class LoginTests(unittest.TestCase):
 
     def test_login_falls_back_to_browser_when_the_keychain_credential_fails(self):
         h = Harness(self.tmp.name, keychain=fresh(expires_at=1))
-        h.manager._refresh_tokens = revoked
+        h.revoked = True
         tokens = fresh(access_token="browser")
         with patch.object(oauth, "browser_login", return_value=tokens), patch("sys.stderr"):
             creds = h.manager.login(open_browser=False)

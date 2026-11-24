@@ -12,7 +12,7 @@ from typing import Any
 
 from .cloudcode import antigravity_user_agent
 from .errors import AntigravityError, TokenExpired
-from .net import http_error_detail
+from .net import http_error_detail, request_json
 
 ANTIGRAVITY_ENDPOINTS = [
     "https://daily-cloudcode-pa.googleapis.com",
@@ -148,28 +148,20 @@ class AntigravityClient:
 
     def fetch_available_models(self, *, access_token: str, project_id: str) -> dict[str, Any]:
         """Merge the model catalogs every endpoint advertises for this account."""
-        body = json.dumps({"project": project_id}).encode("utf-8")
         headers = self._headers(access_token, "application/json")
 
-        def ask(endpoint: str) -> dict[str, Any] | AntigravityError | None:
-            request = urllib.request.Request(
-                endpoint + MODELS_PATH, data=body, headers=headers, method="POST"
-            )
+        def ask(endpoint: str) -> dict[str, Any] | AntigravityError:
             try:
-                with urllib.request.urlopen(request, timeout=MODELS_TIMEOUT_SECONDS) as response:
-                    data = json.loads(response.read().decode("utf-8") or "{}")
-            except urllib.error.HTTPError as exc:
-                detail = http_error_detail(exc)
-                if exc.code == 401:
-                    return TokenExpired()
-                return AntigravityError(
-                    f"Cloud Code Assist API error ({exc.code}): {detail}", status=exc.code
+                return request_json(
+                    endpoint + MODELS_PATH,
+                    headers=headers,
+                    json_body={"project": project_id},
+                    timeout=MODELS_TIMEOUT_SECONDS,
+                    error_prefix="Cloud Code Assist API error",
                 )
-            except (OSError, http.client.HTTPException, ValueError) as exc:
-                return AntigravityError(
-                    f"Cloud Code Assist model discovery failed: {exc}", status=502
-                )
-            return data if isinstance(data, dict) else None
+            except AntigravityError as exc:
+                # Only here does a 401 mean the token; request_json also serves OAuth.
+                return TokenExpired() if exc.status == 401 else exc
 
         # Asked together so a slow endpoint costs one timeout, not one per endpoint; map keeps order.
         with ThreadPoolExecutor(max_workers=max(1, len(self.endpoints))) as pool:

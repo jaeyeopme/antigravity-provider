@@ -2,6 +2,13 @@
 
 Each version is the date its code reached `main` (`YYYY.M.D`), with `.1`, `.2`, ... for later merges the same day.
 
+## 2026.11.24.1
+
+- Present the current Antigravity version instead of a fixed `2.1.4`. The backend already treated that version as old (it hid the newest model variants) and in time rejects old versions outright, which would have failed every request until a plugin release. The version is now read from Antigravity's update server on the first request of each Hermes process and saved in `$HERMES_HOME/.antigravity_client_version.json`. When that server cannot be reached, the saved version or a built-in `2.34.0` is presented, whichever is newer. `ANTIGRAVITY_CLIENT_VERSION` still overrides all of it.
+- Present the client the way the Antigravity IDE does: `antigravity/hub/<version> (aidev_client; os_type=...; arch=...; cl=...)`. The OS alone picks the build named (macOS `arm64`, Linux and Windows `amd64`); the host's architecture is no longer sent.
+- `hermes agy select` without a model ID may pick a different model than before: the backend names a newer default (`gemini-3.8-flash`) to current client versions.
+- Hide models the backend lists as unavailable (`gemini-4-*-disabled`). They appear with current client versions and return 404 when selected.
+
 ## 2026.11.24
 
 - The plugin is now named `antigravity-subscription`, and the repository `jaeyeopme/hermes-plugin-antigravity-subscription`. The old repository address still works, and an existing install keeps working under its old name `antigravity-provider` after `hermes plugins update`.
