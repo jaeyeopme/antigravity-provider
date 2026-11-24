@@ -30,8 +30,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # The oldest and newest supported Python on one OS; the other OSes on the newest only. No
+        # failure in this job's history ever split by Python version, only by OS.
         os: [ubuntu-latest, macos-latest, windows-latest]
-        python-version: ['3.11', '3.14']
+        python-version: ['3.14']
+        include:
+          - os: ubuntu-latest
+            python-version: '3.11'
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
