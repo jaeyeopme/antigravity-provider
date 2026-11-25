@@ -80,13 +80,34 @@ class RequestTests(unittest.TestCase):
             reasoning_effort="low",
         )
         req = body["request"]
-        self.assertIn("systemInstruction", req)
-        self.assertEqual(req["systemInstruction"]["role"], "system")
-        self.assertEqual(req["systemInstruction"]["parts"], [{"text": "You are concise."}])
-        self.assertEqual(req["contents"][-1]["role"], "user")
-        self.assertEqual(req["contents"][-1]["parts"][0]["text"], "ping")
+        # The backend answers a third-party agent prompt in systemInstruction with a false 429.
+        self.assertNotIn("systemInstruction", req)
+        self.assertEqual(
+            req["contents"],
+            [{"role": "user", "parts": [{"text": "You are concise."}, {"text": "ping"}]}],
+        )
         self.assertEqual(body["model"], "gemini-3.1-pro-low")
         self.assertEqual(req["generationConfig"]["thinkingConfig"]["thinkingBudget"], 1001)
+
+    def test_system_prompt_gets_its_own_user_turn_when_the_history_starts_with_the_model(self):
+        body = build(
+            model="google-antigravity/gemini-3.1-pro",
+            project_id="p",
+            messages=[
+                {"role": "system", "content": "One."},
+                {"role": "developer", "content": "Two."},
+                {"role": "assistant", "content": "hello"},
+                {"role": "user", "content": "ping"},
+            ],
+            tools=[],
+            reasoning_effort="low",
+        )
+        req = body["request"]
+        self.assertNotIn("systemInstruction", req)
+        self.assertEqual(
+            req["contents"][0], {"role": "user", "parts": [{"text": "One."}, {"text": "Two."}]}
+        )
+        self.assertEqual([c["role"] for c in req["contents"]], ["user", "model", "user"])
 
     def test_openai_tool_schema_maps_to_function_declarations(self):
         body = build(
