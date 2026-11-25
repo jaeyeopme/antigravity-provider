@@ -339,7 +339,13 @@ def build_generate_content_request(
         "labels": _envelope_labels(route),
     }
     if system_parts:
-        upstream["systemInstruction"] = {"role": "system", "parts": system_parts}
+        # Cloud Code Assist matches systemInstruction against third-party agent prompts (Hermes'
+        # own among them) and answers a match with a 429 worded like spent quota. The same text
+        # at the head of the first user turn is served.
+        if contents[0]["role"] == "user":
+            contents[0]["parts"][:0] = system_parts
+        else:
+            contents.insert(0, {"role": "user", "parts": system_parts})
     declarations = _function_declarations(request.tools)
     if declarations:
         upstream["tools"] = declarations

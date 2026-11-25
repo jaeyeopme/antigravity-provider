@@ -2,6 +2,10 @@
 
 Each version is the date its code reached `main` (`YYYY.M.D`), with `.1`, `.2`, ... for later merges the same day.
 
+## 2026.11.26
+
+- Requests no longer fail with `429 RESOURCE_EXHAUSTED` while the account still has quota. The backend refuses Hermes' system prompt when it arrives as a system instruction, and words the refusal like spent quota, so every Hermes turn failed (seen with `gemini-4-hydrogen` and `gemini-3.8-flash`). The system prompt is now sent unchanged at the start of the first user message, which the backend serves.
+
 ## 2026.11.24.1
 
 - Present the current Antigravity version instead of a fixed `2.1.4`. The backend already treated that version as old (it hid the newest model variants) and in time rejects old versions outright, which would have failed every request until a plugin release. The version is now read from Antigravity's update server on the first request of each Hermes process and saved in `$HERMES_HOME/.antigravity_client_version.json`. When that server cannot be reached, the saved version or a built-in `2.34.0` is presented, whichever is newer. `ANTIGRAVITY_CLIENT_VERSION` still overrides all of it.
