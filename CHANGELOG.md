@@ -2,6 +2,10 @@
 
 Each version is the date its code reached `main` (`YYYY.M.D`), with `.1`, `.2`, ... for later merges the same day.
 
+## 2026.11.27
+
+- Image models are hidden by the backend's `imageGenerationModelIds` instead of by `image` in the model ID, so a chat model named that way stays listed. Image generation is not available: `gemini-3.1-flash-image` returned 500 in every test, in Google's own agy too. Use another `image_gen` provider.
+
 ## 2026.11.26
 
 - Requests no longer fail with `429 RESOURCE_EXHAUSTED` while the account still has quota. The backend refuses Hermes' system prompt when it arrives as a system instruction, and words the refusal like spent quota, so every Hermes turn failed (seen with `gemini-4-hydrogen` and `gemini-3.8-flash`). The system prompt is now sent unchanged at the start of the first user message, which the backend serves.
