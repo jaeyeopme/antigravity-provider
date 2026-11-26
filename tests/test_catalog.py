@@ -82,6 +82,15 @@ class CatalogTests(unittest.TestCase):
         )
         self.assertEqual(catalog.model_ids(), ["google-antigravity/gemini-3-flash"])
 
+    def test_image_generation_models_are_not_offered(self):
+        catalog = build_catalog(
+            {
+                "models": {"gemini-3-flash-image-chat": {}, "gemini-3.1-flash-image": {}},
+                "imageGenerationModelIds": ["gemini-3.1-flash-image"],
+            }
+        )
+        self.assertEqual(catalog.model_ids(), ["google-antigravity/gemini-3-flash-image-chat"])
+
     def test_unknown_thinking_family_is_grouped_without_static_entry(self):
         catalog = build_catalog(CATALOG_PAYLOAD)
         self.assertIn("google-antigravity/gemini-3.9-flash", catalog.model_ids())

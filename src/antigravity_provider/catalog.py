@@ -201,7 +201,6 @@ def _selectable(runtime_id: str, info: dict[str, Any], advertised: set[str]) -> 
     if (
         info.get("isInternal") is True
         or info.get("disabled") is True  # listed as unavailable; a request for it returns 404
-        or "image" in lower
         or lower.startswith(("chat_", "tab_", "model_"))
     ):
         return False
@@ -229,6 +228,9 @@ def build_catalog(payload: dict[str, Any], fallback: ModelCatalog | None = None)
     advertised: set[str] = set()
     _collect_runtime_ids(payload.get("agentModelSorts"), known, advertised)
     _collect_runtime_ids(payload.get("tieredModelIds"), known, advertised)
+    image_models = payload.get("imageGenerationModelIds")  # image-only; chat requests to them fail
+    if not isinstance(image_models, list):
+        image_models = []
 
     groups: dict[str, _ModelGroup] = {}
     runtime_routes: dict[str, RouteSpec] = {}
@@ -237,7 +239,7 @@ def build_catalog(payload: dict[str, Any], fallback: ModelCatalog | None = None)
     for runtime_id, raw_info in raw_models.items():
         if not isinstance(runtime_id, str) or not isinstance(raw_info, dict):
             continue
-        if not _selectable(runtime_id, raw_info, advertised):
+        if runtime_id in image_models or not _selectable(runtime_id, raw_info, advertised):
             continue
         spec = _route_spec(runtime_id, raw_info)
         runtime_routes[runtime_id] = spec

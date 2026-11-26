@@ -22,6 +22,7 @@ what the caution below is about.
 - Registers the `google-antigravity` provider in Hermes, with the models your account lists.
 - **Streaming chat** with tools, images (data URLs), and reasoning levels.
 - **New models** show up without a plugin release: the catalog is read from your account.
+- **No image generation.** Antigravity's image model (`gemini-3.1-flash-image`) failed with `500 Internal error encountered.` in every test, in Google's own `agy` too, so the plugin hides it. Use another `image_gen` provider.
 
 ## Requirements
 
