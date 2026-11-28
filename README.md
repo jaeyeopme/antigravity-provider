@@ -26,7 +26,8 @@ what the caution below is about.
 
 ## Requirements
 
-- Hermes `>=0.21.5`. CI checks 0.21.6 and the latest release.
+- Hermes `>=0.22.6`, the first release where a provider supplies its own picker list. CI checks 0.22.6 and the
+  latest release.
 - Python 3.11 or newer. Standard library only.
 - A Google account with Antigravity access.
 
@@ -66,7 +67,7 @@ The `google-antigravity/` prefix is optional. A model the backend serves works e
 |---|---|
 | `Missing Antigravity credentials` | Run `hermes agy login`. |
 | `Antigravity sign-in expired or was revoked` | Run `hermes agy login`. With the `agy` credential, sign in to `agy` again first. |
-| A new model is missing from the picker | The catalog refreshes every four hours. Use `/model <model-id>` meanwhile. |
+| A new model is missing from the picker, or a retired one is still there | Hermes keeps each provider's list for an hour and refreshes it after the picker is opened. Run `/model --refresh` to read it now. |
 | `500 Internal error encountered.` after `/model gemini-3.1-flash-image` | The picker hides image models, but a model ID typed by hand is still sent to the backend, which fails. Pick a chat model; use another `image_gen` provider for images. |
 | Port 51121 is busy | `ANTIGRAVITY_OAUTH_PORT=51122 hermes agy login --no-keychain` |
 | `This version of Antigravity is no longer supported` | Restart Hermes; the version is read again on its first request. If it still fails, set `ANTIGRAVITY_CLIENT_VERSION` to the current Antigravity version. |
@@ -91,10 +92,10 @@ The `google-antigravity/` prefix is optional. A model the backend serves works e
   When that server cannot be reached it presents the saved version or the one built into the plugin, whichever
   is newer. A weekly CI job warns the maintainer if that server stops answering or the built-in version grows old.
 - **Catalog**: both Antigravity endpoints are asked (`v1internal:fetchAvailableModels`), merged, and cached for
-  four hours. Three kinds of model are left out of the list: image-generation models (the backend's
-  `imageGenerationModelIds`), models the backend marks disabled, and internal ones. Variants such as `*-low`,
-  `*-high`, `*-thinking`, and `*-tiered` fold into one model whose reasoning level picks the variant or thinking
-  budget.
+  four hours. The picker's list is read again whenever Hermes refreshes its own copy. Three kinds of model are
+  left out of the list: image-generation models (the backend's `imageGenerationModelIds`), models the backend
+  marks disabled, and internal ones. Variants such as `*-low`, `*-high`, `*-thinking`, and `*-tiered` fold into
+  one model whose reasoning level picks the variant or thinking budget.
 - **Requests**: Hermes' OpenAI-style requests are converted in-process: messages, `tools` and `tool_choice`
   (keeping Gemini thought signatures), `max_tokens`, `temperature`, `top_p`, and tool schemas widened to what the
   backend accepts. Failures surface as Hermes provider errors, so Hermes' retry and fallback apply.

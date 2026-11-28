@@ -66,6 +66,16 @@ def register_provider_profile() -> bool:
             except Exception:
                 return None
 
+    def picker_catalog(force_refresh: bool) -> list[str] | None:
+        # Hermes shows this list as it is, without merging fallback_models into it, and passes True
+        # when it refreshes its own hour-old copy or on `/model --refresh`.
+        from .service import default_service
+
+        try:
+            return default_service().catalog(force=force_refresh).model_ids()
+        except Exception:
+            return None  # Hermes then asks fetch_models and falls back to fallback_models
+
     fallback_models = tuple(fallback_catalog().model_ids())
     register_provider(
         AntigravityProfile(
@@ -79,6 +89,7 @@ def register_provider_profile() -> bool:
             supports_health_check=False,
             supports_vision=True,
             fallback_models=fallback_models,
+            picker_catalog=picker_catalog,
             fixed_temperature=OMIT_TEMPERATURE,
         )
     )
