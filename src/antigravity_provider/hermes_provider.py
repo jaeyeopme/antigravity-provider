@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from .catalog import catalog_manager, fallback_catalog
+from .catalog import catalog_manager
 from .client import ANTIGRAVITY_ENDPOINTS
-from .models import DEFAULT_MODEL, normalize_effort
+from .models import normalize_effort
 
 PROVIDER_NAME = "antigravity"
 PLACEHOLDER_API_KEY_ENV = "ANTIGRAVITY_HERMES_API_KEY"
@@ -56,7 +56,7 @@ def register_provider_profile() -> bool:
 
         def get_max_tokens(self, model: str | None) -> int | None:
             # Hot path: answer from the last catalog without network calls.
-            return catalog_manager.current().max_tokens(model or DEFAULT_MODEL)
+            return catalog_manager.current().max_tokens(model or "")
 
         def fetch_models(self, **kwargs: Any) -> list[str] | None:
             from .service import default_service
@@ -67,16 +67,15 @@ def register_provider_profile() -> bool:
                 return None
 
     def picker_catalog(force_refresh: bool) -> list[str] | None:
-        # Hermes shows this list as it is, without merging fallback_models into it, and passes True
-        # when it refreshes its own hour-old copy or on `/model --refresh`.
+        # Hermes shows this list as it is, and passes True when it refreshes its own hour-old copy
+        # or on `/model --refresh`.
         from .service import default_service
 
         try:
             return default_service().catalog(force=force_refresh).model_ids()
         except Exception:
-            return None  # Hermes then asks fetch_models and falls back to fallback_models
+            return None  # Hermes then asks fetch_models
 
-    fallback_models = tuple(fallback_catalog().model_ids())
     register_provider(
         AntigravityProfile(
             name=PROVIDER_NAME,
@@ -88,7 +87,6 @@ def register_provider_profile() -> bool:
             auth_type="api_key",
             supports_health_check=False,
             supports_vision=True,
-            fallback_models=fallback_models,
             picker_catalog=picker_catalog,
             fixed_temperature=OMIT_TEMPERATURE,
         )

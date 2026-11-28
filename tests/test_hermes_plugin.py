@@ -13,7 +13,7 @@ from unittest.mock import Mock, patch
 
 import antigravity_provider
 import antigravity_provider.hermes_plugin as plugin
-from antigravity_provider.catalog import build_catalog, fallback_catalog
+from antigravity_provider.catalog import EMPTY_CATALOG, build_catalog
 from antigravity_provider.errors import AntigravityError
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -137,9 +137,8 @@ class SelectModelTests(unittest.TestCase):
         self.assertEqual(self.select(None, self.ACCOUNT), "google-antigravity/claude-sonnet-4-6")
 
     def test_no_model_without_the_account_list_is_refused(self):
-        # Discovery failed: the built-in list is not the account's, so its default may not exist.
-        with self.assertRaises(SystemExit):
-            self.select(None, fallback_catalog())
+        with self.assertRaises(SystemExit):  # discovery failed: there is no default to pick
+            self.select(None, EMPTY_CATALOG)
 
 
 class StatusTests(unittest.TestCase):

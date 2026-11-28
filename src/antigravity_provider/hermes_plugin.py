@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from . import __version__, oauth
-from .catalog import fallback_catalog
+from .catalog import EMPTY_CATALOG
 from .credentials import SOURCE_KEYCHAIN
 from .errors import AntigravityError
 from .hermes_provider import (
@@ -125,16 +125,15 @@ def _select_model(model_id: str | None) -> None:
     try:
         catalog = default_service().catalog()
     except Exception:
-        catalog = fallback_catalog()
-    # The built-in list stands in when discovery fails; it is not this account's list.
-    listed = catalog.model_ids() if catalog is not fallback_catalog() else None
+        catalog = EMPTY_CATALOG
+    listed = catalog.model_ids()  # empty when discovery failed
     if not model_id:
-        if listed is None:
+        model_id = catalog.default_model
+        if not model_id:
             raise SystemExit(
                 "Could not load your Antigravity models. Run `hermes agy login`, or pass a model ID."
             )
-        model_id = catalog.default_model
-    elif listed is not None and normalize_model_id(model_id) not in listed:
+    elif listed and normalize_model_id(model_id) not in listed:
         names = ", ".join(strip_provider_prefix(model) for model in listed)
         raise SystemExit(f"Your Antigravity account does not list {model_id}. Available: {names}")
     config = load_config()

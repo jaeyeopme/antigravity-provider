@@ -10,7 +10,7 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any
 
-from .catalog import ModelCatalog, ResolvedRoute, fallback_catalog
+from .catalog import EMPTY_CATALOG, ModelCatalog, ResolvedRoute
 from .models import normalize_effort, normalize_model_id
 from .schema import to_gemini_schema
 
@@ -58,8 +58,11 @@ def parse_chat_request(payload: dict[str, Any]) -> ChatRequest:
     max_tokens = payload.get("max_tokens")
     if not _is_int(max_tokens):
         max_tokens = payload.get("max_completion_tokens")
+    model = normalize_model_id(str(payload.get("model") or ""))
+    if not model:
+        raise ValueError("model is required")
     return ChatRequest(
-        model=normalize_model_id(str(payload.get("model") or "")),
+        model=model,
         messages=messages,
         tools=payload.get("tools") if isinstance(payload.get("tools"), list) else [],
         tool_choice=payload.get("tool_choice"),
@@ -306,7 +309,7 @@ def build_generate_content_request(
     session_id: str | None = None,
     catalog: ModelCatalog | None = None,
 ) -> dict[str, Any]:
-    route = (catalog or fallback_catalog()).resolve(
+    route = (catalog or EMPTY_CATALOG).resolve(
         request.model, normalize_effort(request.reasoning_effort)
     )
     contents, system_parts = _contents(request.messages, route)
