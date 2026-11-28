@@ -37,6 +37,10 @@ The plugin uses only the standard library. Do not add a dependency.
 - Every change, code or not, goes through a pull request and is squash-merged once the `ci`
   check passes. `main` is protected; nothing is pushed to it directly.
 - One pull request per batch of work, one commit per change inside it.
+- A pull request title becomes the squash commit on `main`, so it and every commit start with a
+  type: `feat:`, `fix:`, `docs:`, `test:`, `ci:` or `chore:`. After the type, say what changes for
+  a user, starting in lower case. A code pull request ends its title with the new version:
+  `fix: drop the built-in model list (0.5.1)`.
 - **Code** is anything that changes how the plugin behaves: `src/` and the root `__init__.py`.
   A code pull request raises the version in `src/antigravity_provider/__init__.py` and
   `plugin.yaml` by [Semantic Versioning](https://semver.org/): patch (`0.4.3` → `0.4.4`) for a fix,
