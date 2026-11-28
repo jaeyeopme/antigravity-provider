@@ -12,7 +12,6 @@ from .fileio import read_json, write_private_json
 from .models import DEFAULT_MODEL, normalize_effort, normalize_model_id, strip_provider_prefix
 from .paths import model_cache_path
 
-CATALOG_TTL_SECONDS = 4 * 60 * 60
 # After a failed refresh, wait this long before calling discovery again.
 CATALOG_RETRY_SECONDS = 5 * 60
 CACHE_FORMAT_VERSION = 1
@@ -402,17 +401,17 @@ class CatalogManager:
         self,
         *,
         path: Path | Callable[[], Path] = model_cache_path,
-        ttl_seconds: float = CATALOG_TTL_SECONDS,
         retry_seconds: float = CATALOG_RETRY_SECONDS,
         clock: Callable[[], float] = time.time,
     ) -> None:
         self._path = path
-        self.ttl_seconds = ttl_seconds
         self.retry_seconds = retry_seconds
         self.clock = clock
         self._lock = threading.Lock()
         self._refreshing: dict[str, threading.Lock] = {}
         self._entries: dict[str, _Entry] = {}
+        # Projects this process has read from the backend; until then the disk copy only stands in on failure.
+        self._read: set[str] = set()
         self._failed_at: dict[str, float] = {}
         # One Hermes process may serve several profiles (gateway, Desktop serve); each home keeps its own.
         self._current: dict[str, ModelCatalog] = {}
@@ -471,13 +470,13 @@ class CatalogManager:
         fetch: Callable[[], dict[str, Any]],
         force: bool = False,
     ) -> ModelCatalog:
-        """Return the catalog for ``project_id``, calling ``fetch`` for a fresh payload when stale."""
+        """Return the catalog for ``project_id``; ``fetch`` runs once per process and when forced."""
         key = self._project_key(project_id)
         with self._lock:
             entry = self._cached(key)
             now = self.clock()
             if not force:
-                if entry is not None and now - entry.checked_at < self.ttl_seconds:
+                if entry is not None and key in self._read:
                     return self._use(entry.catalog)
                 failed_at = self._failed_at.get(key)
                 if failed_at is not None and now - failed_at < self.retry_seconds:
@@ -503,6 +502,7 @@ class CatalogManager:
             checked_at = self.clock()
             with self._lock:
                 self._entries[key] = _Entry(checked_at, catalog)
+                self._read.add(key)
                 self._failed_at.pop(key, None)
             try:
                 self._save(key, checked_at, payload)

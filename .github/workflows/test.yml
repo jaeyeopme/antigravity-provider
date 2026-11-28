@@ -59,7 +59,7 @@ jobs:
         hermes: [stable]
         include:
           - os: ubuntu-latest
-            hermes: v0.21.6
+            hermes: v0.22.6
     defaults:
       run:
         shell: bash

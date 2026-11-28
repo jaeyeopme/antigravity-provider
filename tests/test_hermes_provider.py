@@ -56,6 +56,30 @@ class ProviderProfileTests(unittest.TestCase):
         )
         self.assertEqual(extras(reasoning_config=None), ({}, {}))
 
+    def test_picker_catalog_fetches_live_when_hermes_forces_a_refresh(self):
+        registered = []
+        with patch.dict(sys.modules, fake_hermes(registered)):
+            hermes_provider.register_provider_profile()
+        live = build_catalog({"models": {"gemini-3.5-flash-lite": {}}})
+        forced = []
+
+        class Service:
+            def catalog(self, *, force=False):
+                forced.append(force)
+                return live
+
+        with patch("antigravity_provider.service.default_service", return_value=Service()):
+            self.assertEqual(registered[0].picker_catalog(True), live.model_ids())
+            registered[0].picker_catalog(False)
+        self.assertEqual(forced, [True, False])
+
+    def test_picker_catalog_hands_over_to_hermes_when_the_catalog_cannot_be_read(self):
+        registered = []
+        with patch.dict(sys.modules, fake_hermes(registered)):
+            hermes_provider.register_provider_profile()
+        with patch("antigravity_provider.service.default_service", side_effect=RuntimeError):
+            self.assertIsNone(registered[0].picker_catalog(True))
+
 
 if __name__ == "__main__":
     unittest.main()

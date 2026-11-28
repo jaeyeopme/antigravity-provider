@@ -7,7 +7,7 @@ body:
       value: |
         New models usually need no plugin change. Before filing, check these:
 
-        - The catalog refreshes every four hours. Until then, use the model directly: `/model <model-id>` or `hermes agy select <model-id>`. If that works, the model will appear on its own.
+        - Hermes keeps each provider's model list for an hour. Run `/model --refresh` to read it now, or use the model directly: `/model <model-id>` or `hermes agy select <model-id>`. If that works, the model will appear on its own.
         - A `404` means Antigravity does not serve that model to your account, or the ID is wrong. `hermes model` lists what your account has.
         - A new *kind* of model ID (a suffix the plugin does not know, a new wire protocol) does need code. That is what this template is for.
   - type: input
@@ -44,7 +44,7 @@ body:
     id: plugin
     attributes:
       label: Plugin version
-      placeholder: 2026.10.28.1
+      placeholder: 0.5.0
     validations:
       required: true
   - type: input

@@ -222,24 +222,21 @@ class CatalogTests(unittest.TestCase):
             home[0] = Path(directory) / "c"
             self.assertIs(manager.current(), fallback_catalog())
 
-    def test_expired_last_known_good_survives_refresh_failure(self):
+    def test_last_known_good_survives_refresh_failure(self):
         with tempfile.TemporaryDirectory() as directory:
-            now = [1000.0]
             fetch = Fetch(CATALOG_PAYLOAD)
-            manager = CatalogManager(
-                path=Path(directory) / "catalog.json", ttl_seconds=10, clock=lambda: now[0]
-            )
+            manager = CatalogManager(path=Path(directory) / "catalog.json")
             first = manager.get(project_id="project", fetch=fetch)
             self.assertIn("google-antigravity/gemini-3.9-flash", first.model_ids())
-            now[0] += 20
             fetch.error = RuntimeError("offline")
-            second = manager.get(project_id="project", fetch=fetch)
+            second = manager.get(project_id="project", fetch=fetch, force=True)
+            self.assertEqual(fetch.calls, 2)
             self.assertEqual(second.model_ids(), first.model_ids())
 
     def test_empty_refresh_does_not_replace_last_known_good(self):
         with tempfile.TemporaryDirectory() as directory:
             fetch = Fetch(CATALOG_PAYLOAD)
-            manager = CatalogManager(path=Path(directory) / "catalog.json", ttl_seconds=0)
+            manager = CatalogManager(path=Path(directory) / "catalog.json")
             first = manager.get(project_id="project", fetch=fetch)
             fetch.payload = {"models": {}}
             second = manager.get(project_id="project", fetch=fetch, force=True)
@@ -255,17 +252,27 @@ class CatalogTests(unittest.TestCase):
             catalog = manager.get(project_id="project", fetch=Fetch(CATALOG_PAYLOAD))
         self.assertIn("google-antigravity/gemini-3.9-flash", catalog.model_ids())
 
-    def test_disk_cache_is_reused_by_a_new_process(self):
+    def test_each_process_reads_the_backend_once(self):
+        # A model retired while Hermes was stopped must not come back from the disk copy.
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "catalog.json"
             CatalogManager(path=path).get(project_id="project", fetch=Fetch(CATALOG_PAYLOAD))
-            fetch = Fetch(CATALOG_PAYLOAD)
-            catalog = CatalogManager(path=path).get(project_id="project", fetch=fetch)
-            self.assertEqual(fetch.calls, 0)
+            fetch = Fetch({"models": {"claude-sonnet-4-6": {}}})
+            manager = CatalogManager(path=path)
+            catalog = manager.get(project_id="project", fetch=fetch)
+            self.assertNotIn("google-antigravity/gemini-3.9-flash", catalog.model_ids())
+            manager.get(project_id="project", fetch=fetch)
+            self.assertEqual(fetch.calls, 1)
+
+    def test_disk_copy_stands_in_when_a_new_process_cannot_reach_the_backend(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "catalog.json"
+            CatalogManager(path=path).get(project_id="project", fetch=Fetch(CATALOG_PAYLOAD))
+            down = Fetch(error=RuntimeError("offline"))
+            catalog = CatalogManager(path=path).get(project_id="project", fetch=down)
             self.assertIn("google-antigravity/gemini-3.9-flash", catalog.model_ids())
-            other = Fetch(CATALOG_PAYLOAD)
-            CatalogManager(path=path).get(project_id="other-project", fetch=other)
-            self.assertEqual(other.calls, 1)
+            other = CatalogManager(path=path).get(project_id="other-project", fetch=down)
+            self.assertEqual(other.model_ids(), fallback_catalog().model_ids())
 
     def test_failed_discovery_backs_off_instead_of_retrying_every_request(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -286,12 +293,8 @@ class CatalogTests(unittest.TestCase):
 
     def test_stale_catalog_is_served_while_another_thread_refreshes(self):
         with tempfile.TemporaryDirectory() as directory:
-            now = [1000.0]
-            manager = CatalogManager(
-                path=Path(directory) / "catalog.json", ttl_seconds=10, clock=lambda: now[0]
-            )
+            manager = CatalogManager(path=Path(directory) / "catalog.json")
             stale = manager.get(project_id="project", fetch=Fetch(CATALOG_PAYLOAD))
-            now[0] += 20
             started, release = threading.Event(), threading.Event()
 
             def slow_fetch():
@@ -300,13 +303,14 @@ class CatalogTests(unittest.TestCase):
                 return CATALOG_PAYLOAD
 
             worker = threading.Thread(
-                target=manager.get, kwargs={"project_id": "project", "fetch": slow_fetch}
+                target=manager.get,
+                kwargs={"project_id": "project", "fetch": slow_fetch, "force": True},
             )
             worker.start()
             started.wait(5)
             began = time.monotonic()
             fetch = Fetch(CATALOG_PAYLOAD)
-            served = manager.get(project_id="project", fetch=fetch)
+            served = manager.get(project_id="project", fetch=fetch, force=True)
             self.assertLess(time.monotonic() - began, 1)
             self.assertEqual(fetch.calls, 0)
             self.assertEqual(served.model_ids(), stale.model_ids())
