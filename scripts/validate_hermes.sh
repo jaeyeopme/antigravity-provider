@@ -38,7 +38,9 @@ if [ -n "$skip" ]; then
   echo "skipped the Hermes plugin install check: $skip"
 else
   tmp="$(mktemp -d)"
-  trap 'rm -rf "$tmp"' EXIT
+  # Hermes may still be installing its default plugins into the throwaway home in the background;
+  # a file it holds must not fail a check that passed.
+  trap 'rm -rf "$tmp" || true' EXIT
   # Git Bash on Windows: hermes and python take C:/... paths, not /tmp/...
   src="$(pwd)"
   if command -v cygpath >/dev/null 2>&1; then tmp="$(cygpath -m "$tmp")"; src="$(cygpath -m "$src")"; fi
