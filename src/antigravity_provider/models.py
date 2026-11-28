@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 ANTIGRAVITY_PREFIX = "google-antigravity/"
-# Stable offline fallback only. Live account defaults come from fetchAvailableModels.
-DEFAULT_MODEL = "google-antigravity/gemini-3.1-pro"
 
 
 def strip_provider_prefix(model: str) -> str:
@@ -12,9 +10,7 @@ def strip_provider_prefix(model: str) -> str:
 
 def normalize_model_id(model: str) -> str:
     model = (model or "").strip()
-    if not model:
-        return DEFAULT_MODEL
-    if "/" not in model:
+    if model and "/" not in model:
         return f"{ANTIGRAVITY_PREFIX}{model}"
     return model
 

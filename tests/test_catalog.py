@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from antigravity_provider.catalog import CatalogManager, build_catalog, fallback_catalog
+from antigravity_provider.catalog import EMPTY_CATALOG, CatalogManager, build_catalog
 
 CATALOG_PAYLOAD = {
     "models": {
@@ -145,10 +145,14 @@ class CatalogTests(unittest.TestCase):
         }
         self.assertEqual(build_catalog(payload).aux_model, "google-antigravity/claude-sonnet-4-6")
 
-    def test_seed_lists_its_aux_model_and_no_retired_flash(self):
-        seed = fallback_catalog()
-        self.assertIn(seed.aux_model, seed.model_ids())
-        self.assertNotIn("google-antigravity/gemini-3.5-flash", seed.model_ids())
+    def test_without_a_catalog_nothing_is_listed_and_no_model_is_picked(self):
+        self.assertEqual(EMPTY_CATALOG.model_ids(), [])
+        self.assertEqual((EMPTY_CATALOG.default_model, EMPTY_CATALOG.aux_model), ("", ""))
+
+    def test_model_the_account_lacks_is_sent_as_typed(self):
+        # A built-in route for it would carry a model enum the backend may have retired.
+        route = build_catalog({"models": {"claude-sonnet-4-6": {}}}).resolve("gemini-3.1-pro")
+        self.assertEqual((route.wire_model, route.model_enum), ("gemini-3.1-pro", None))
 
     def test_unsuffixed_default_beats_nonmatching_thinking_variant(self):
         catalog = build_catalog(
@@ -220,7 +224,7 @@ class CatalogTests(unittest.TestCase):
             home[0] = Path(directory) / "a"
             self.assertIs(manager.current(), first)
             home[0] = Path(directory) / "c"
-            self.assertIs(manager.current(), fallback_catalog())
+            self.assertIs(manager.current(), EMPTY_CATALOG)
 
     def test_last_known_good_survives_refresh_failure(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -272,7 +276,7 @@ class CatalogTests(unittest.TestCase):
             catalog = CatalogManager(path=path).get(project_id="project", fetch=down)
             self.assertIn("google-antigravity/gemini-3.9-flash", catalog.model_ids())
             other = CatalogManager(path=path).get(project_id="other-project", fetch=down)
-            self.assertEqual(other.model_ids(), fallback_catalog().model_ids())
+            self.assertEqual(other.model_ids(), [])
 
     def test_failed_discovery_backs_off_instead_of_retrying_every_request(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -284,7 +288,7 @@ class CatalogTests(unittest.TestCase):
             for _ in range(5):
                 catalog = manager.get(project_id="project", fetch=fetch)
             self.assertEqual(fetch.calls, 1)
-            self.assertEqual(catalog.model_ids(), fallback_catalog().model_ids())
+            self.assertEqual(catalog.model_ids(), [])
             now[0] += 301
             fetch.error, fetch.payload = None, CATALOG_PAYLOAD
             catalog = manager.get(project_id="project", fetch=fetch)

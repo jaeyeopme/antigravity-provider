@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from .fileio import read_json, write_private_json
-from .models import DEFAULT_MODEL, normalize_effort, normalize_model_id, strip_provider_prefix
+from .models import normalize_effort, normalize_model_id, strip_provider_prefix
 from .paths import model_cache_path
 
 # After a failed refresh, wait this long before calling discovery again.
@@ -70,9 +70,8 @@ class ModelCatalog:
     groups: dict[str, _ModelGroup]
     runtime_routes: dict[str, RouteSpec]
     runtime_to_public: dict[str, str]
-    default_model: str = DEFAULT_MODEL
-    aux_model: str = DEFAULT_MODEL
-    fallback_groups: dict[str, _ModelGroup] = field(default_factory=dict)
+    default_model: str = ""
+    aux_model: str = ""
 
     def model_ids(self) -> list[str]:
         return [normalize_model_id(model) for model in sorted(self.groups)]
@@ -81,7 +80,7 @@ class ModelCatalog:
         requested = strip_provider_prefix(normalize_model_id(model))
         level = normalize_effort(effort)
         public_id = self.runtime_to_public.get(requested, requested)
-        group = self.groups.get(public_id) or self.fallback_groups.get(public_id)
+        group = self.groups.get(public_id)
 
         if requested in self.runtime_routes and requested != public_id:
             spec = self.runtime_routes[requested]
@@ -217,7 +216,7 @@ def _suffix(runtime_id: str) -> tuple[str, str] | None:
     return None
 
 
-def build_catalog(payload: dict[str, Any], fallback: ModelCatalog | None = None) -> ModelCatalog:
+def build_catalog(payload: dict[str, Any]) -> ModelCatalog:
     raw_models = payload.get("models") if isinstance(payload, dict) else None
     if not isinstance(raw_models, dict):
         raw_models = {}
@@ -280,9 +279,7 @@ def build_catalog(payload: dict[str, Any], fallback: ModelCatalog | None = None)
     default_public = (
         runtime_to_public.get(str(raw_default), str(raw_default)) if raw_default else ""
     )
-    default_model = (
-        normalize_model_id(default_public) if default_public in groups else DEFAULT_MODEL
-    )
+    default_model = normalize_model_id(default_public) if default_public in groups else ""
     # The backend's own cheap pick for side tasks, if this account lists it.
     tiered = (
         payload.get("tieredModelIds") if isinstance(payload.get("tieredModelIds"), dict) else {}
@@ -291,96 +288,15 @@ def build_catalog(payload: dict[str, Any], fallback: ModelCatalog | None = None)
     aux_public = next((runtime_to_public[m] for m in cheap if m in runtime_to_public), "")
     return ModelCatalog(
         groups=groups,
-        runtime_routes={**(fallback.runtime_routes if fallback else {}), **runtime_routes},
-        runtime_to_public={**(fallback.runtime_to_public if fallback else {}), **runtime_to_public},
+        runtime_routes=runtime_routes,
+        runtime_to_public=runtime_to_public,
         default_model=default_model,
         aux_model=normalize_model_id(aux_public) if aux_public else default_model,
-        fallback_groups=(fallback.groups if fallback else {}),
     )
 
 
-_SEED_PAYLOAD = {
-    "models": {
-        "gemini-3.8-flash-tiered": {
-            "model": "MODEL_PLACEHOLDER_M322",
-            "maxOutputTokens": 65536,
-            "supportsThinking": True,
-            "thinkingBudget": -1,
-        },
-        "gemini-3.7-flash-tiered": {
-            "model": "MODEL_PLACEHOLDER_M301",
-            "maxOutputTokens": 65536,
-            "supportsThinking": True,
-            "thinkingBudget": -1,
-        },
-        "gemini-3.6-flash-high": {
-            "model": "MODEL_PLACEHOLDER_M71",
-            "maxOutputTokens": 65536,
-            "supportsThinking": True,
-            "thinkingBudget": -1,
-        },
-        "gemini-3.6-flash-medium": {
-            "model": "MODEL_PLACEHOLDER_M72",
-            "maxOutputTokens": 65536,
-            "supportsThinking": True,
-            "thinkingBudget": 4000,
-        },
-        "gemini-3.6-flash-low": {
-            "model": "MODEL_PLACEHOLDER_M73",
-            "maxOutputTokens": 65536,
-            "supportsThinking": True,
-            "thinkingBudget": 1000,
-        },
-        "gemini-3.1-pro-low": {
-            "model": "MODEL_PLACEHOLDER_M36",
-            "maxOutputTokens": 65535,
-            "supportsThinking": True,
-            "thinkingBudget": 1001,
-        },
-        "gemini-pro-agent": {
-            "model": "MODEL_PLACEHOLDER_M16",
-            "maxOutputTokens": 65535,
-            "supportsThinking": True,
-            "thinkingBudget": 10001,
-        },
-        "gemini-3-flash": {
-            "model": "MODEL_PLACEHOLDER_M18",
-            "maxOutputTokens": 65536,
-            "supportsThinking": True,
-            "thinkingBudget": -1,
-        },
-        "gemini-3.5-flash-lite": {
-            "model": "MODEL_PLACEHOLDER_M198",
-            "maxOutputTokens": 65535,
-            "supportsThinking": True,
-            "thinkingBudget": -1,
-        },
-        "claude-sonnet-4-6": {
-            "maxOutputTokens": 64000,
-            "supportsThinking": True,
-            "thinkingBudget": 1024,
-        },
-        "claude-opus-4-6-thinking": {
-            "maxOutputTokens": 64000,
-            "supportsThinking": True,
-            "thinkingBudget": 1024,
-        },
-        "gpt-oss-120b-medium": {
-            "model": "MODEL_OPENAI_GPT_OSS_120B_MEDIUM",
-            "maxOutputTokens": 32768,
-            "supportsThinking": True,
-            "thinkingBudget": 8192,
-            "usedNonGeminiModel": True,
-        },
-    },
-    "defaultAgentModelId": "gemini-3.1-pro-low",
-    "commitMessageModelIds": ["gemini-3.5-flash-lite"],
-}
-_FALLBACK_CATALOG = build_catalog(_SEED_PAYLOAD)
-
-
-def fallback_catalog() -> ModelCatalog:
-    return _FALLBACK_CATALOG
+# What stands in before this process has any catalog: nothing listed, every ID sent as typed.
+EMPTY_CATALOG = build_catalog({})
 
 
 @dataclass(frozen=True)
@@ -393,7 +309,7 @@ class CatalogManager:
     """Account-scoped model catalog with a disk-backed last-known-good copy.
 
     Discovery runs outside the state lock, at most once at a time per project. While a refresh is
-    in flight or backing off after a failure, callers get the last-known-good (or seed) catalog
+    in flight or backing off after a failure, callers get the last-known-good (or empty) catalog
     instead of waiting on the network.
     """
 
@@ -426,7 +342,7 @@ class CatalogManager:
 
     def current(self) -> ModelCatalog:
         """The catalog last used for the active Hermes home; never touches the network (for hot paths)."""
-        return self._current.get(str(self.path)) or fallback_catalog()
+        return self._current.get(str(self.path)) or EMPTY_CATALOG
 
     def _load(self, project_key: str) -> _Entry | None:
         data = read_json(self.path)
@@ -437,7 +353,7 @@ class CatalogManager:
         payload, checked_at = data.get("payload"), data.get("checked_at")
         if not isinstance(payload, dict) or not isinstance(checked_at, (int, float)):
             return None
-        catalog = build_catalog(payload, fallback_catalog())
+        catalog = build_catalog(payload)
         return _Entry(float(checked_at), catalog) if catalog.groups else None
 
     def _save(self, project_key: str, checked_at: float, payload: dict[str, Any]) -> None:
@@ -480,7 +396,7 @@ class CatalogManager:
                     return self._use(entry.catalog)
                 failed_at = self._failed_at.get(key)
                 if failed_at is not None and now - failed_at < self.retry_seconds:
-                    return self._use(entry.catalog if entry else fallback_catalog())
+                    return self._use(entry.catalog if entry else EMPTY_CATALOG)
             refresh_lock = self._refreshing.setdefault(key, threading.Lock())
 
         if not refresh_lock.acquire(blocking=entry is None):
@@ -492,13 +408,13 @@ class CatalogManager:
                     return self._use(latest.catalog)  # refreshed while we waited
             try:
                 payload = fetch()
-                catalog = build_catalog(payload, fallback_catalog())
+                catalog = build_catalog(payload)
                 if not catalog.groups:
                     raise ValueError("empty Antigravity model catalog")
             except Exception:
                 with self._lock:
                     self._failed_at[key] = self.clock()
-                    return self._use(entry.catalog if entry else fallback_catalog())
+                    return self._use(entry.catalog if entry else EMPTY_CATALOG)
             checked_at = self.clock()
             with self._lock:
                 self._entries[key] = _Entry(checked_at, catalog)

@@ -380,6 +380,10 @@ class RequestTests(unittest.TestCase):
         self.assertEqual(req.reasoning_effort, "high")
         self.assertEqual(req.messages[0]["content"], "ping")
 
+    def test_request_without_a_model_is_refused(self):
+        with self.assertRaisesRegex(ValueError, "model is required"):
+            parse_chat_request({"messages": [{"role": "user", "content": "ping"}]})
+
     def test_parses_hermes_extra_body_reasoning_and_completion_tokens(self):
         req = parse_chat_request(
             {
