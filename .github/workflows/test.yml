@@ -108,9 +108,10 @@ jobs:
     steps:
       - run: test "${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}" = false
 
-  # Every code merge sets a new version; tag it so users can name a version to pin or roll back to
-  # (`hermes plugins install ... --ref <commit>` takes the commit the tag points to). A merge that
-  # keeps the version (docs, CI) finds its tag already there and does nothing.
+  # Every code merge sets a new version; tag it and publish its changelog section as a release, so
+  # users can name a version to pin or roll back to (`hermes plugins install ... --ref <commit>` takes
+  # the commit the tag points to). A merge that keeps the version (docs, CI) finds its tag already
+  # there and does nothing.
   tag:
     if: github.event_name == 'push'
     needs: ci
@@ -119,7 +120,15 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v7
-      - run: |
-          v="v$(PYTHONPATH=src python -c 'import antigravity_provider; print(antigravity_provider.__version__)')"
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="$(PYTHONPATH=src python -c 'import antigravity_provider; print(antigravity_provider.__version__)')"
+          v="v$version"
           if git ls-remote --exit-code --tags origin "$v" >/dev/null; then echo "$v already tagged"; exit 0; fi
-          git tag "$v" && git push origin "$v"
+          awk -v h="## [$version] " 'index($0, h) == 1 {f = 1; next} /^## \[/ {f = 0} f' CHANGELOG.md > "$RUNNER_TEMP/notes.md"
+          test -s "$RUNNER_TEMP/notes.md"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git tag -a "$v" -m "$v" && git push origin "$v"
+          gh release create "$v" --verify-tag --title "$v" --notes-file "$RUNNER_TEMP/notes.md"

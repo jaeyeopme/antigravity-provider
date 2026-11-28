@@ -2,7 +2,7 @@
 
 ## Kind of change
 
-- [ ] **Code** (`src/`, root `__init__.py`): behavior changes. Version set to the merge date in `src/antigravity_provider/__init__.py` and `plugin.yaml`, and a `## YYYY.M.D` section added to `CHANGELOG.md`.
+- [ ] **Code** (`src/`, root `__init__.py`): behavior changes. Version raised by Semantic Versioning in `src/antigravity_provider/__init__.py` and `plugin.yaml`, and a `## [X.Y.Z] - YYYY-MM-DD` section added to `CHANGELOG.md`.
 - [ ] **Everything else** (docs, tests, scripts, CI, metadata): no version bump, no changelog entry.
 
 ## Checklist
