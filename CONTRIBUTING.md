@@ -1,7 +1,7 @@
 # Contributing
 
 Thanks for helping. This plugin has real users, and every merge to `main` reaches them on their
-next `hermes plugins update`, with no release step in between. The rules below exist so that a
+next `hermes plugins update`. The rules below exist so that a
 change that is right on your machine is also right on theirs.
 
 ## Before you start
@@ -38,14 +38,15 @@ The plugin uses only the standard library. Do not add a dependency.
   check passes. `main` is protected; nothing is pushed to it directly.
 - One pull request per batch of work, one commit per change inside it.
 - **Code** is anything that changes how the plugin behaves: `src/` and the root `__init__.py`.
-  A code pull request sets the version to its merge date in
-  `src/antigravity_provider/__init__.py` and `plugin.yaml`: `YYYY.M.D` without leading zeros
-  (`2026.10.16`), with `.1`, `.2`, ... for another code merge on the same day. It adds a section
-  headed `## YYYY.M.D` to `CHANGELOG.md`. A test keeps the three in step.
+  A code pull request raises the version in `src/antigravity_provider/__init__.py` and
+  `plugin.yaml` by [Semantic Versioning](https://semver.org/): patch (`0.4.3` → `0.4.4`) for a fix,
+  minor (`0.4.4` → `0.5.0`) for a new feature or a change a user must act on (a renamed command,
+  setting or plugin name) while the version is below 1.0. It moves the `## [Unreleased]` notes in
+  `CHANGELOG.md` under a heading `## [X.Y.Z] - YYYY-MM-DD` dated the merge day. A test keeps the three in step.
 - **Everything else** (docs, tests, scripts, CI, descriptive metadata such as the `plugin.yaml`
   description) needs no version bump or changelog entry.
-- CI tags each new version on `main` as `vYYYY.M.D[.n]`. There are no GitHub releases: Hermes
-  installs from `main`. A user who wants to pin or roll back runs
+- CI tags each new version on `main` as `vX.Y.Z` and publishes a GitHub release with its
+  changelog section. Hermes still installs from `main`, so the merge itself is what reaches users. A user who wants to pin or roll back runs
   `hermes plugins install jaeyeopme/hermes-plugin-antigravity-subscription --ref <commit>` with the commit a tag
   points to.
 

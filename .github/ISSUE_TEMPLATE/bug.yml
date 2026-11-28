@@ -25,8 +25,8 @@ body:
     id: plugin
     attributes:
       label: Plugin version
-      description: The `version` in `plugin.yaml` of the installed plugin, or the `vYYYY.M.D` you pinned.
-      placeholder: 2026.10.28.1
+      description: The `version` in `plugin.yaml` of the installed plugin, or the `vX.Y.Z` release you pinned.
+      placeholder: 0.4.3
     validations:
       required: true
   - type: input

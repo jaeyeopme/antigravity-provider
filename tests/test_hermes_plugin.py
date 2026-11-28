@@ -84,6 +84,9 @@ class HermesPluginTests(unittest.TestCase):
 
 
 class VersionTests(unittest.TestCase):
+    def test_version_is_semver(self):
+        self.assertRegex(antigravity_provider.__version__, r"^\d+\.\d+\.\d+$")
+
     def test_plugin_manifest_matches_package_version(self):
         manifest = (ROOT / "plugin.yaml").read_text()
         self.assertEqual(
@@ -91,7 +94,9 @@ class VersionTests(unittest.TestCase):
         )
 
     def test_changelog_has_entry_for_current_version(self):
-        self.assertIn(f"## {antigravity_provider.__version__}", (ROOT / "CHANGELOG.md").read_text())
+        self.assertIn(
+            f"## [{antigravity_provider.__version__}] - ", (ROOT / "CHANGELOG.md").read_text()
+        )
 
 
 class SelectModelTests(unittest.TestCase):

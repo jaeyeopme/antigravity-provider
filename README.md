@@ -69,7 +69,7 @@ The `google-antigravity/` prefix is optional. A model the backend serves works e
 | A new model is missing from the picker | The catalog refreshes every four hours. Use `/model <model-id>` meanwhile. |
 | Port 51121 is busy | `ANTIGRAVITY_OAUTH_PORT=51122 hermes agy login --no-keychain` |
 | `This version of Antigravity is no longer supported` | Restart Hermes; the version is read again on its first request. If it still fails, set `ANTIGRAVITY_CLIENT_VERSION` to the current Antigravity version. |
-| Something broke after `hermes plugins update` | Every merge to `main` is a release. Go back with `hermes plugins install jaeyeopme/hermes-plugin-antigravity-subscription --force --ref <commit>`, using the commit of an earlier [tag](https://github.com/jaeyeopme/hermes-plugin-antigravity-subscription/tags). |
+| Something broke after `hermes plugins update` | Every merge to `main` is a release. Go back with `hermes plugins install jaeyeopme/hermes-plugin-antigravity-subscription --force --ref <commit>`, using the commit of an earlier [release](https://github.com/jaeyeopme/hermes-plugin-antigravity-subscription/releases). |
 
 ## Privacy
 

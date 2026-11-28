@@ -1,34 +1,48 @@
 # Changelog
 
-Each version is the date its code reached `main` (`YYYY.M.D`), with `.1`, `.2`, ... for later merges the same day.
+All notable changes to this plugin are listed here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/). Versions 0.3.4 to 0.4.3 were first published under date versions (`YYYY.M.D`); each notes its old name.
 
-## 2026.11.27
+## [Unreleased]
+
+## [0.4.3] - 2026-11-27
+
+Published as `2026.11.27`.
 
 - Image models are hidden by the backend's `imageGenerationModelIds` instead of by `image` in the model ID, so a chat model named that way stays listed. Image generation is not available: `gemini-3.1-flash-image` returned 500 in every test, in Google's own agy too. Use another `image_gen` provider.
 
-## 2026.11.26
+## [0.4.2] - 2026-11-26
+
+Published as `2026.11.26`.
 
 - Requests no longer fail with `429 RESOURCE_EXHAUSTED` while the account still has quota. The backend refuses Hermes' system prompt when it arrives as a system instruction, and words the refusal like spent quota, so every Hermes turn failed (seen with `gemini-4-hydrogen` and `gemini-3.8-flash`). The system prompt is now sent unchanged at the start of the first user message, which the backend serves.
 
-## 2026.11.24.1
+## [0.4.1] - 2026-11-25
+
+Published as `2026.11.24.1`.
 
 - Present the current Antigravity version instead of a fixed `2.1.4`. The backend already treated that version as old (it hid the newest model variants) and in time rejects old versions outright, which would have failed every request until a plugin release. The version is now read from Antigravity's update server on the first request of each Hermes process and saved in `$HERMES_HOME/.antigravity_client_version.json`. When that server cannot be reached, the saved version or a built-in `2.34.0` is presented, whichever is newer. `ANTIGRAVITY_CLIENT_VERSION` still overrides all of it.
 - Present the client the way the Antigravity IDE does: `antigravity/hub/<version> (aidev_client; os_type=...; arch=...; cl=...)`. The OS alone picks the build named (macOS `arm64`, Linux and Windows `amd64`); the host's architecture is no longer sent.
 - `hermes agy select` without a model ID may pick a different model than before: the backend names a newer default (`gemini-3.8-flash`) to current client versions.
 - Hide models the backend lists as unavailable (`gemini-4-*-disabled`). They appear with current client versions and return 404 when selected.
 
-## 2026.11.24
+## [0.4.0] - 2026-11-24
+
+Published as `2026.11.24`.
 
 - The plugin is now named `antigravity-subscription`, and the repository `jaeyeopme/hermes-plugin-antigravity-subscription`. The old repository address still works, and an existing install keeps working under its old name `antigravity-provider` after `hermes plugins update`.
 
-## 2026.10.28.1
+## [0.3.6] - 2026-10-28
+
+Published as `2026.10.28.1`.
 
 - Keep "null allowed" on tool parameters as `nullable`. A parameter typed `["string", "null"]` or with a `null` union branch lost that, so the model could never pass null to a tool that uses it to clear a field.
 - Stop changing the Hermes home folder's permissions when saving the sign-in or the model cache. The folder is Hermes', and a home shared with another account on purpose lost that access.
 - Answer Hermes' no-network questions (output limit, side-task model) from the catalog of the active profile instead of the last one used. A gateway serving two accounts in one process could pick a model the other account does not list.
 - `hermes agy logout` also removes the provider registration the plugin wrote under `plugins/model-providers/`. Left behind after `hermes plugins remove`, Hermes warned about it at every start.
 
-## 2026.10.28
+## [0.3.5] - 2026-10-28
+
+Published as `2026.10.28`.
 
 - Accept tools whose parameter schema has a recursive, remote, or missing `$ref`, or an empty union. One such MCP tool failed every request while it was loaded.
 - Merge `allOf` in tool schemas. A property wrapped in it (pydantic v1 does this) lost every field it referenced.
@@ -41,23 +55,25 @@ Each version is the date its code reached `main` (`YYYY.M.D`), with `.1`, `.2`, 
 - Keep using a refreshed token when saving it fails (Windows, while another Hermes process reads the file).
 - Keep the backend's message for a stream error with a text code such as `RESOURCE_EXHAUSTED`.
 
-## 2026.10.16
+## [0.3.4] - 2026-10-16
+
+Published as `2026.10.16`.
 
 - `hermes agy select` refuses a model your account does not list and shows the ones it does. Before, it saved the name anyway and every request failed with 404; without a model and with model discovery failing, it saved `gemini-3.1-pro`.
 
-## 2026.10.15.3
+## [0.3.3] - 2026-10-15
 
 - Pick the model for Hermes side tasks (titles, compression, ...) from the account's catalog: the backend's cheap pick (`gemini-3.5-flash-lite`) when listed, else the account default. The fixed `gemini-3.1-pro` returned 404 on accounts without it.
 - Show a retired model's notice ("Gemini 3.5 Flash is no longer available...") as the reply. It arrives without a finish reason, so Hermes kept requesting continuations and never showed it.
 - Drop retired Gemini 3.5 Flash routes from the offline model list.
 
-## 2026.10.15.2
+## [0.3.2] - 2026-10-15
 
 - Keep tool schemas inside what the backend accepts: drop unsupported fields (`const` becomes a one-value `enum`), send enum values as strings, give arrays `items`, and list only defined properties as `required`. One MCP tool using these failed every request.
 - Keep Claude's output limit above its thinking budget; a small `max_tokens` made Claude routes fail with 400.
 - Send images from tool results (screenshots) to the model instead of a text placeholder.
 
-## 2026.10.15.1
+## [0.3.1] - 2026-10-15
 
 - Send tool call IDs back with replayed tool calls and results; Claude and gpt-oss routes rejected the next turn after any tool call without them.
 - Keep tool parameters named like schema keywords (`definitions`, `additionalProperties`, `$ref`, `anyOf`, ...) instead of dropping them or failing the request.
@@ -65,7 +81,7 @@ Each version is the date its code reached `main` (`YYYY.M.D`), with `.1`, `.2`, 
 - Report a non-streamed reply that ends without a finish reason as a retryable provider error instead of returning the cut-off reply as complete.
 - Keep token usage when it arrives in its own event after the finish reason.
 
-## 2026.10.15
+## [0.3.0] - 2026-10-15
 
 - Preserve real Gemini thought signatures across turns through Hermes' tool-call `extra_content`; the skip placeholder is only used when history has none.
 - Give every tool call a unique ID; identical calls in different turns no longer share one.
@@ -78,17 +94,17 @@ Each version is the date its code reached `main` (`YYYY.M.D`), with `.1`, `.2`, 
 - `hermes agy status` shows token expiry and project; `ANTIGRAVITY_CLIENT_VERSION` overrides the presented client version.
 - Internal: split into credential, OAuth, transport, request, response, service, and Hermes layers; one version source.
 
-## 2026.9.26
+## [0.2.2] - 2026-09-26
 
 - Support Hermes asynchronous auxiliary requests through the native Antigravity transport.
 - Prefer an unsuffixed live model when the requested reasoning variant is unavailable.
 - Keep a live model catalog usable when its optional disk cache cannot be written.
 
-## 2026.9.25.1
+## [0.2.1] - 2026-09-25
 
 - Preserve Hermes tool-schema unions as backend-compatible supersets instead of rejecting or selecting one branch.
 
-## 2026.9.25
+## [0.2.0] - 2026-09-25
 
 - Discover and route account models from `fetchAvailableModels`, with a project-scoped last-known-good cache.
 - Use Hermes `ProviderProfile.create_client` for native streaming and standard provider error handling.
@@ -96,6 +112,6 @@ Each version is the date its code reached `main` (`YYYY.M.D`), with `.1`, `.2`, 
 - Preserve local JSON Schema references, reject lossy unions, and generate unique duplicate tool-call IDs.
 - Fall back across Antigravity endpoints on retryable pre-stream failures and reject empty streams.
 
-## 2026.6.28
+## [0.1.0] - 2026-06-28
 
 - Initial Antigravity provider plugin.
