@@ -6,7 +6,7 @@ All notable changes to this plugin are listed here. The format follows [Keep a C
 
 ## [0.5.0] - 2026-11-28
 
-- A model Antigravity retired no longer stays in the model picker. Hermes merged the plugin's built-in model list into the picker, so a retired model in that list stayed until a plugin release, and the plugin answered Hermes from its own copy up to four hours old. The plugin now gives Hermes the account's list directly and reads it again whenever Hermes refreshes, including `/model --refresh`.
+- A model Antigravity retired no longer stays in the model picker. Hermes merged the plugin's built-in model list into the picker, so a retired model in that list stayed until a plugin release, and the plugin answered Hermes from its own copy up to four hours old. The plugin now gives Hermes the account's list directly. It reads the list once per Hermes process, on first use, and again whenever Hermes refreshes the picker, including `/model --refresh`. The four-hour timer is gone; the saved copy is used only when the backend cannot be reached.
 - Needs Hermes 0.22.6 or newer (was 0.21.5). On an older Hermes the provider does not load: update Hermes first.
 
 ## [0.4.3] - 2026-11-27

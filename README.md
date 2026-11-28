@@ -91,15 +91,16 @@ The `google-antigravity/` prefix is optional. A model the backend serves works e
   IDE's version from Antigravity's update server once per Hermes process, on the first request, and saves it.
   When that server cannot be reached it presents the saved version or the one built into the plugin, whichever
   is newer. A weekly CI job warns the maintainer if that server stops answering or the built-in version grows old.
-- **Catalog**: both Antigravity endpoints are asked (`v1internal:fetchAvailableModels`), merged, and cached for
-  four hours. The picker's list is read again whenever Hermes refreshes its own copy. Three kinds of model are
-  left out of the list: image-generation models (the backend's `imageGenerationModelIds`), models the backend
-  marks disabled, and internal ones. Variants such as `*-low`, `*-high`, `*-thinking`, and `*-tiered` fold into
-  one model whose reasoning level picks the variant or thinking budget.
+- **Catalog**: both Antigravity endpoints are asked (`v1internal:fetchAvailableModels`), and merged. The list
+  is read once per Hermes process, on its first use, and again whenever Hermes refreshes the picker. It is also
+  saved, and the saved copy stands in when the backend cannot be reached. Three kinds of model are left out of the
+  list: image-generation models (the backend's `imageGenerationModelIds`), models the backend marks disabled, and
+  internal ones. Variants such as `*-low`, `*-high`, `*-thinking`, and `*-tiered` fold into one model whose
+  reasoning level picks the variant or thinking budget.
 - **Requests**: Hermes' OpenAI-style requests are converted in-process: messages, `tools` and `tool_choice`
   (keeping Gemini thought signatures), `max_tokens`, `temperature`, `top_p`, and tool schemas widened to what the
   backend accepts. Failures surface as Hermes provider errors, so Hermes' retry and fallback apply.
-- **Files** in `$HERMES_HOME`: `.antigravity_oauth.json` (sign-in), `.antigravity_models.json` (catalog cache),
+- **Files** in `$HERMES_HOME`: `.antigravity_oauth.json` (sign-in), `.antigravity_models.json` (last catalog read),
   `.antigravity_client_version.json` (last client version read), `plugins/model-providers/antigravity/` (a small
   shim that registers the provider; written by `login` and `select`).
 - **Environment**: `ANTIGRAVITY_OAUTH_PORT`, `ANTIGRAVITY_OAUTH_BIND_HOST`, `ANTIGRAVITY_OAUTH_REDIRECT_HOST`
